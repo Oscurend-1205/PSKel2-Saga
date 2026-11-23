@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="shambatGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff5722"/>
+      <stop offset="100%" stop-color="#ee4d2d"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- Shopping Bag Body -->
+  <rect x="8" y="16" width="48" height="42" rx="10" fill="url(#shambatGrad)" filter="url(#shadow)"/>
+
+  <!-- Shopping Bag Handles -->
+  <path d="M22 20 V12 C22 6.5 26.5 2 32 2 C37.5 2 42 6.5 42 12 V20" 
+        fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+
+  <!-- Shambat "S" Logo -->
+  <text x="32" y="44" 
+        font-family="'Plus Jakarta Sans', 'Segoe UI', Arial, sans-serif" 
+        font-size="26" 
+        font-weight="900" 
+        fill="#ffffff" 
+        text-anchor="middle" 
+        dominant-baseline="central">S</text>
+
+  <!-- Sparkle Accent -->
+  <polygon points="46,14 48,18 52,20 48,22 46,26 44,22 40,20 44,18" fill="#ffd166"/>
+</svg>
+
