@@ -71,6 +71,9 @@ function Compress-FolderToZip {
         $relativePath = $fullPath.Substring($sourcePath.Length + 1)
         $normalizedRelative = $relativePath -replace '\\', '/'
         
+        # Skip semua file arsip zip agar tidak ikut ter-deploy / terkompresi ulang
+        if ($normalizedRelative -like '*.zip' -or $normalizedRelative -like '*.zip.*') { continue }
+
         # Validasi pengecualian
         $isExcluded = $false
         foreach ($exclude in $excludePaths) {
@@ -176,7 +179,14 @@ function Split-ZipFile {
 # A. Kompresi Core Application
 Write-Host "`n[1/5] Mengompresi File Utama Aplikasi (core.zip)..." -ForegroundColor Cyan
 $coreZipTemp = Join-Path $tempBuildDir "core.zip"
-$excludeList = @("vendor", "node_modules", ".git", "build_infinityfree", "build_temp_workspace", ".env", "public/uploads", "storage/app/public")
+$excludeList = @(
+    "vendor", "node_modules", ".git", "build_infinityfree", "build_temp_workspace",
+    ".env", "public/uploads", "storage/app/public",
+    # File development & artefak lokal - tidak perlu ter-deploy ke production
+    "unzip.php", "tests", "phpunit.xml", ".phpunit.result.cache",
+    "build_split_zip.ps1", "prepare-deploy.md", "presentation.md", "PANDUAN-SAGA-BRIDGE.md",
+    "presentasi.php", "presentasi.html", "presentasi-saga-outbox.html"
+)
 $coreCount = Compress-FolderToZip -sourcePath $sourceDir -zipPath $coreZipTemp -excludePaths $excludeList
 Write-Host "   -> Berhasil memaketkan $coreCount file inti aplikasi." -ForegroundColor Gray
 

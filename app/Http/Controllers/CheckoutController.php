@@ -79,6 +79,20 @@ class CheckoutController extends Controller
             'auto_process_outbox' => 'nullable|boolean',
         ]);
 
+        // Bersihkan nama audiens dari nomor telepon, tanda kurung, dan hilangkan nama dummy 'Budi Santoso'
+        $rawName = (string) $validated['customer_name'];
+        $cleanName = trim(preg_replace('/\s*\(.*?\)\s*/', '', $rawName));
+        $cleanName = trim(preg_replace('/(\+62|08)[0-9\- ]+/', '', $cleanName));
+        if (empty($cleanName) || stripos($cleanName, 'budi') !== false || stripos($cleanName, 'santoso') !== false) {
+            $cleanName = session('audience_name') && stripos(session('audience_name'), 'budi') === false
+                ? session('audience_name')
+                : 'Audiens ' . rand(100, 999);
+        }
+
+        // Simpan nama & email audiens yang bersih di session
+        session(['audience_name' => $cleanName]);
+        session(['audience_email' => $validated['customer_email']]);
+
         $cart = session()->get('cart', []);
 
         if (empty($cart)) {
@@ -118,7 +132,7 @@ class CheckoutController extends Controller
                 'gross_amount' => (int) $totalAmount,
             ],
             'customer_details' => [
-                'first_name' => $validated['customer_name'],
+                'first_name' => $cleanName,
                 'email' => $validated['customer_email'],
                 'shipping_address' => [
                     'address' => $validated['shipping_address'],
@@ -135,7 +149,7 @@ class CheckoutController extends Controller
             'order_code' => $orderCode,
             'items' => $items,
             'total_amount' => $totalAmount,
-            'customer_name' => $validated['customer_name'],
+            'customer_name' => $cleanName,
             'customer_email' => $validated['customer_email'],
             'shipping_address' => $validated['shipping_address'],
             'simulate_inventory_fail' => $request->boolean('simulate_inventory_fail'),

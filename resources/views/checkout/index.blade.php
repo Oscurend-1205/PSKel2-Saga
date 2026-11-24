@@ -42,21 +42,31 @@
                         <span class="text-xs text-slate-400">Alamat utama</span>
                     </div>
 
+                    @php
+                        $audName = session('audience_name');
+                        if ($audName && (stripos($audName, 'budi') !== false || stripos($audName, 'santoso') !== false)) {
+                            $audName = null;
+                        }
+                        $defaultName = $audName ?: '';
+                        $defaultEmail = $defaultName ? (\Illuminate\Support\Str::slug($defaultName) . '@audiens.shambat.id') : '';
+                    @endphp
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label for="customer_name" class="block text-xs text-slate-600 mb-1">Nama penerima</label>
-                            <input type="text" id="customer_name" name="customer_name" required value="Budi Santoso (+62 812-3456-7890)"
+                            <input type="text" id="customer_name" name="customer_name" required value="{{ old('customer_name', $defaultName) }}"
+                                   placeholder="Contoh: Rian Pratama"
                                    class="w-full border border-slate-300 rounded px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#ee4d2d]">
                         </div>
                         <div>
                             <label for="customer_email" class="block text-xs text-slate-600 mb-1">Email penerima</label>
-                            <input type="email" id="customer_email" name="customer_email" required value="budi.santoso@example.com"
+                            <input type="email" id="customer_email" name="customer_email" required value="{{ old('customer_email', $defaultEmail) }}"
+                                   placeholder="email@example.com"
                                    class="w-full border border-slate-300 rounded px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#ee4d2d]">
                         </div>
                         <div class="sm:col-span-2">
                             <label for="shipping_address" class="block text-xs text-slate-600 mb-1">Alamat lengkap</label>
                             <textarea id="shipping_address" name="shipping_address" required rows="2"
-                                      class="w-full border border-slate-300 rounded px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#ee4d2d]">Jl. Sudirman Kav 21 No. 45, RT 02/RW 04, Setiabudi, Jakarta Selatan 12920</textarea>
+                                      class="w-full border border-slate-300 rounded px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#ee4d2d]">Jl. Merdeka No. 12, RT 01/RW 02, Gambir, Jakarta Pusat 10110</textarea>
                         </div>
                     </div>
                 </section>
@@ -253,6 +263,24 @@
 
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') closeSagaModal();
+    });
+
+    // Auto-fill nama penerima dari localStorage jika form belum terisi
+    document.addEventListener('DOMContentLoaded', function() {
+        const nameInput = document.getElementById('customer_name');
+        const emailInput = document.getElementById('customer_email');
+        const saved = localStorage.getItem('shambat_guest_name');
+        if (nameInput && (!nameInput.value || /budi|santoso/i.test(nameInput.value))) {
+            if (saved && !/budi|santoso/i.test(saved)) {
+                nameInput.value = saved;
+                if (emailInput && !emailInput.value) {
+                    const slug = saved.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    emailInput.value = (slug || 'audiens') + '@audiens.shambat.id';
+                }
+            } else {
+                nameInput.value = '';
+            }
+        }
     });
 </script>
 @endpush

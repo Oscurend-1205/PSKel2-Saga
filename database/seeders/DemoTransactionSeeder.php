@@ -16,6 +16,14 @@ class DemoTransactionSeeder extends Seeder
 {
     public function run(): void
     {
+        OrderItem::query()->delete();
+        Order::query()->delete();
+        Payment::query()->delete();
+        StockReservation::query()->delete();
+        Shipment::query()->delete();
+        OutboxMessage::query()->delete();
+        SagaLog::query()->delete();
+
         $products = Product::all();
         if ($products->count() < 2) {
             return;

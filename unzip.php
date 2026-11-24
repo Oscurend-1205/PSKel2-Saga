@@ -127,6 +127,14 @@ function extractGroup(string $root, string $base, array $parts): array
         return ['ok' => false, 'msg' => 'Gagal mengekstrak: ' . basename($zipPath)];
     }
 
+    // Bersihkan view cache agar perubahan Blade langsung aktif
+    foreach (glob($root . '/storage/framework/views/*.php') ?: [] as $vf) {
+        @unlink($vf);
+    }
+    foreach (glob($root . '/bootstrap/cache/*.php') ?: [] as $bf) {
+        @unlink($bf);
+    }
+
     // Hapus arsip setelah sukses untuk menghemat kuota hosting
     foreach ($parts as $part) {
         @unlink($part);
@@ -254,23 +262,46 @@ function cleanHtdocs(string $root, bool $keepSqlite = true): array
     ];
 }
 
-function runArtisan(string $root, string $command): array
+function getLaravelAppInstance(string $root)
 {
+    global $globalLaravelApp;
+    if ($globalLaravelApp !== null && is_object($globalLaravelApp)) {
+        return $globalLaravelApp;
+    }
     $autoload  = $root . '/vendor/autoload.php';
     $bootstrap = $root . '/bootstrap/app.php';
-    if (!file_exists($autoload)) {
-        return ['ok' => false, 'out' => 'vendor/autoload.php tidak ditemukan. Ekstrak arsip terlebih dahulu.'];
+    if (!file_exists($autoload) || !file_exists($bootstrap)) {
+        return null;
+    }
+    require_once $autoload;
+    $globalLaravelApp = require $bootstrap;
+    return $globalLaravelApp;
+}
+
+function runArtisan(string $root, string $command): array
+{
+    $app = getLaravelAppInstance($root);
+    if (!$app || !is_object($app)) {
+        return ['ok' => false, 'out' => 'vendor/autoload.php atau bootstrap/app.php tidak dapat dimuat.'];
     }
     try {
         if (function_exists('opcache_reset')) {
             @opcache_reset();
         }
         ob_start();
-        require_once $autoload;
-        $app    = require_once $bootstrap;
+        if (class_exists(\Illuminate\Support\Facades\Schema::class)) {
+            \Illuminate\Support\Facades\Schema::defaultStringLength(191);
+        }
         $kernel = $app->make(\Illuminate\Contracts\Console\Kernel::class);
         $forceCommands = ['migrate', 'migrate:fresh', 'db:seed', 'key:generate'];
         $params = in_array($command, $forceCommands, true) ? ['--force' => true] : [];
+        if ($command === 'saga-bridge:on') {
+            $command = 'saga-bridge';
+            $params = ['action' => 'on'];
+        } elseif ($command === 'saga-bridge:status') {
+            $command = 'saga-bridge';
+            $params = ['action' => 'status'];
+        }
         $status = $kernel->call($command, $params);
         $out    = $kernel->output();
         ob_end_clean();
@@ -308,6 +339,31 @@ if ($authed && ($action === 'extract' || isset($_POST['extract']))) {
         }
     }
 
+    // Bersihkan cache bootstrap Laravel otomatis (hapus route cache, config cache lama)
+    $cacheFiles = [
+        '/bootstrap/cache/routes-v7.php',
+        '/bootstrap/cache/routes.php',
+        '/bootstrap/cache/config.php',
+        '/bootstrap/cache/events.php',
+        '/bootstrap/cache/services.php',
+        '/bootstrap/cache/packages.php',
+    ];
+    foreach ($cacheFiles as $cf) {
+        if (file_exists($root . $cf)) {
+            @unlink($root . $cf);
+            $detail[] = '✅ Cache dibersihkan: ' . $cf;
+        }
+    }
+
+    // Hapus seluruh file compiled blade view di storage/framework/views
+    $viewFiles = glob($root . '/storage/framework/views/*.php') ?: [];
+    foreach ($viewFiles as $vf) {
+        @unlink($vf);
+    }
+    if (!empty($viewFiles)) {
+        $detail[] = '✅ ' . count($viewFiles) . ' file cache blade views dibersihkan';
+    }
+
     // Buat .env dari .env.example bila belum ada
     if (!file_exists($root . '/.env') && file_exists($root . '/.env.example')) {
         @copy($root . '/.env.example', $root . '/.env');
@@ -333,7 +389,7 @@ if ($authed && $action === 'create_env') {
 }
 
 if ($authed && $action === 'save_env' && isset($_POST['save_env'])) {
-    $dbConn = $_POST['db_connection'] ?? 'sqlite';
+    $dbConn = $_POST['db_connection'] ?? 'mysql';
     $dbDatabase = $_POST['db_database'] ?? '';
     if ($dbConn === 'sqlite') {
         $dbDatabase = $root . '/database/database.sqlite';
@@ -361,6 +417,7 @@ if ($authed && $action === 'save_env' && isset($_POST['save_env'])) {
         'SESSION_DRIVER'   => $_POST['session_driver'] ?? 'file',
         'CACHE_STORE'      => $_POST['cache_store'] ?? 'file',
         'QUEUE_CONNECTION' => 'sync',
+        'SAGA_BRIDGE_ALLOWED' => 'true',
     ];
     if (!empty($_POST['app_key'])) {
         $envData['APP_KEY'] = trim($_POST['app_key']);
@@ -373,13 +430,34 @@ if ($authed && $action === 'save_env' && isset($_POST['save_env'])) {
 
 // ================== AKSI: ARTISAN ==================
 if ($authed && $action === 'artisan' && isset($_POST['artisan_command'])) {
-    $allowed = ['key:generate', 'migrate', 'migrate:fresh', 'db:seed', 'storage:link', 'optimize:clear', 'config:cache', 'route:cache', 'view:cache', 'outbox:process'];
+    $allowed = ['key:generate', 'migrate', 'migrate:fresh', 'db:seed', 'fresh_seed', 'storage:link', 'optimize:clear', 'config:cache', 'route:cache', 'view:cache', 'outbox:process', 'saga-bridge:on', 'saga-bridge:status'];
     $command = $_POST['artisan_command'];
     if (!in_array($command, $allowed, true)) {
         $message = alert('error', 'Perintah tidak diizinkan.');
     } else {
-        if (in_array($command, ['migrate', 'migrate:fresh', 'db:seed'], true)) {
-            $dbConn = getEnvValue($root, 'DB_CONNECTION', 'sqlite');
+        if ($command === 'fresh_seed') {
+            // Reset seluruh tabel (membersihkan sisa migrasi gagal), lalu migrate + seed.
+            $res1 = runArtisan($root, 'migrate:fresh');
+            $res2 = runArtisan($root, 'db:seed');
+            $console = "=== migrate:fresh ===\n" . $res1['out']
+                     . "\n=== db:seed ===\n" . ($res2['out'] ?: '(tanpa output)');
+            $message = ($res1['ok'] && $res2['ok'])
+                ? alert('success', 'Database berhasil di-reset, dimigrasi, dan di-seed.')
+                : alert('error', 'Sebagian perintah gagal. Periksa output di bawah.');
+        } elseif ($command === 'optimize:clear') {
+            // Bersihkan file cache fisik langsung agar tidak bergantung pada koneksi database
+            $cleared = 0;
+            foreach (glob($root . '/bootstrap/cache/*.php') ?: [] as $f) {
+                if (basename($f) !== '.gitignore') { @unlink($f); $cleared++; }
+            }
+            foreach (glob($root . '/storage/framework/views/*.php') ?: [] as $f) {
+                if (basename($f) !== '.gitignore') { @unlink($f); $cleared++; }
+            }
+            $res = runArtisan($root, 'optimize:clear');
+            $console = "File cache bootstrap & views dibersihkan: {$cleared}\n" . ($res['out'] ?: 'Cache berhasil dibersihkan.');
+            $message = alert('success', "Seluruh cache (views, routes, config) berhasil dibersihkan.");
+        } elseif (in_array($command, ['migrate', 'migrate:fresh', 'db:seed', 'fresh_seed'], true)) {
+            $dbConn = getEnvValue($root, 'DB_CONNECTION', 'mysql');
             if ($dbConn === 'sqlite') {
                 if (!is_dir($root . '/database')) {
                     @mkdir($root . '/database', 0777, true);
@@ -392,7 +470,9 @@ if ($authed && $action === 'artisan' && isset($_POST['artisan_command'])) {
                 @chmod($sqlite, 0666);
             }
         }
-        if ($command === 'key:generate') {
+        if ($command === 'fresh_seed') {
+            // Sudah ditangani di atas.
+        } elseif ($command === 'key:generate') {
             $newKey = 'base64:' . base64_encode(random_bytes(32));
             $envPath = $root . '/.env';
             if (!file_exists($envPath) && file_exists($root . '/.env.example')) {
@@ -482,7 +562,17 @@ if ($authed && $action === 'fix_perms') {
         }
     }
 
-    $message = alert('success', "{$fixed} folder storage/bootstrap/database & file SQLite diperbaiki dan dibuat writable.");
+    // Hapus seluruh file compiled blade view lama
+    $oldViews = glob($root . '/storage/framework/views/*.php') ?: [];
+    foreach ($oldViews as $ov) {
+        @unlink($ov);
+    }
+    // Hapus file route cache lama jika ada
+    if (file_exists($root . '/bootstrap/cache/routes-v7.php')) {
+        @unlink($root . '/bootstrap/cache/routes-v7.php');
+    }
+
+    $message = alert('success', "{$fixed} folder storage/bootstrap/database & file SQLite diperbaiki. Cache views lama (" . count($oldViews) . " file) dan route cache berhasil dibersihkan.");
 }
 
 // ================== AKSI: DIAGNOSA ==================
@@ -529,9 +619,10 @@ if ($authed && $action === 'diagnose') {
     if (file_exists($root . '/vendor/autoload.php')) {
         try {
             ob_start();
-            require_once $root . '/vendor/autoload.php';
-            $app = require_once $root . '/bootstrap/app.php';
-            $app->make(\Illuminate\Contracts\Http\Kernel::class);
+            $app = getLaravelAppInstance($root);
+            if ($app && is_object($app)) {
+                $app->make(\Illuminate\Contracts\Http\Kernel::class);
+            }
             ob_end_clean();
             $diag['boot'] = ['ok' => true, 'msg' => 'Laravel Shambat berhasil di-booting.'];
         } catch (\Throwable $e) {
@@ -643,10 +734,10 @@ $hasFiles = !empty($groups);
         </div>
 
         <label>DB Connection</label>
-        <?php $dbConn = getEnvValue($root, 'DB_CONNECTION', 'sqlite'); ?>
+        <?php $dbConn = getEnvValue($root, 'DB_CONNECTION', 'mysql'); ?>
         <select name="db_connection" onchange="toggleDbFields(this.value)">
-          <option value="sqlite" <?= $dbConn === 'sqlite' ? 'selected' : '' ?>>SQLite (Bawaan File - Sangat Praktis)</option>
           <option value="mysql" <?= $dbConn === 'mysql' ? 'selected' : '' ?>>MySQL (Shared Hosting Database)</option>
+          <option value="sqlite" <?= $dbConn === 'sqlite' ? 'selected' : '' ?>>SQLite (Bawaan File - Sangat Praktis)</option>
         </select>
 
         <div id="mysqlFields" style="<?= $dbConn === 'sqlite' ? 'display:none;' : '' ?>">
@@ -703,11 +794,14 @@ $hasFiles = !empty($groups);
           <option value="migrate">migrate (Jalankan migrasi tabel domain)</option>
           <option value="db:seed">db:seed (Isi produk & demo data Shambat)</option>
           <option value="outbox:process">outbox:process (Proses antrean pesan Outbox)</option>
+          <option value="saga-bridge:status">saga-bridge:status (Cek Status & Kunci Presentasi)</option>
+          <option value="saga-bridge:on">saga-bridge:on (Aktifkan / Buat Kunci Baru Presentasi)</option>
           <option value="optimize:clear">optimize:clear (Bersihkan seluruh cache)</option>
           <option value="config:cache">config:cache</option>
           <option value="route:cache">route:cache</option>
           <option value="view:cache">view:cache</option>
           <option value="migrate:fresh">migrate:fresh (⚠️ Reset Database Ulang)</option>
+          <option value="fresh_seed">migrate:fresh + db:seed (⚠️ Reset &amp; Isi Ulang Database)</option>
         </select>
         <button type="submit" class="btn green" style="width:100%">Jalankan Perintah Artisan</button>
       </form>
@@ -806,7 +900,7 @@ function toggleDbFields(val) {
 }
 function confirmCommand(form) {
   var v = form.artisan_command.value;
-  if (v === 'migrate:fresh') {
+  if (v === 'migrate:fresh' || v === 'fresh_seed') {
     return confirm('PERINGATAN: migrate:fresh akan MENGHAPUS SEMUA TABEL di database. Lanjutkan?');
   }
   return true;

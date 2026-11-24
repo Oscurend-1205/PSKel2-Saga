@@ -4,11 +4,17 @@ namespace Database\Seeders;
 
 use App\Models\Product;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Schema;
 
 class ProductSeeder extends Seeder
 {
     public function run(): void
     {
+        if (!Schema::hasTable('products')) {
+            $this->command?->warn('Tabel products belum ada. Jalankan `php artisan migrate` terlebih dahulu.');
+            return;
+        }
+
         Product::truncate();
 
         $products = [

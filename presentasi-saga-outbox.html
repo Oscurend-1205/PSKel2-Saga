@@ -1,0 +1,2832 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Distributed Transaction, Saga, dan Transactional Outbox · Kelompok 2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800;900&family=Inter+Tight:wght@200;300;400;500;600&family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Courier+Prime&display=swap" rel="stylesheet">
+<style>
+:root{
+  --pur:#7a5cff; --pink:#f5a8f5; --ind:#4b52f2; --lav:#9b88fb;
+  --navy:#172061; --navy2:#212a6b; --th:#24317d;
+  --green:#4fd8a6; --red:#ff7b7b; --yel:#ffcf6b; --blue:#8fb0ff;
+  --grad:linear-gradient(90deg,#7a5cff,#f5a8f5);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#000;overflow:hidden;color:#fff;font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+
+/* ---------- Stage ---------- */
+#stage{position:absolute;left:50%;top:50%;width:1456px;height:819px;transform-origin:center;overflow:hidden;background:#000;--mx:0;--my:0}
+.slide{position:absolute;inset:0;overflow:hidden;opacity:0;visibility:hidden;transform:scale(1.035);filter:blur(8px);
+  transition:opacity .55s ease,transform .9s cubic-bezier(.2,.8,.2,1),filter .55s ease,visibility 0s linear .6s}
+.slide.active{opacity:1;visibility:visible;transform:none;filter:none;transition:opacity .55s ease,transform .9s cubic-bezier(.2,.8,.2,1),filter .55s ease}
+.ab{position:absolute}
+
+/* entrance animations (only run on the active slide) */
+.slide.active .a{animation:rise .85s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--d,0) * .09s + .25s)}
+.slide.active .a.z{animation-name:zoomIn}
+.slide.active .a.l{animation-name:fromLeft}
+.slide.active .a.f{animation-name:fadeIn}
+@keyframes rise{from{opacity:0;translate:0 26px}to{opacity:1;translate:0 0}}
+@keyframes zoomIn{from{opacity:0;scale:.86}to{opacity:1;scale:1}}
+@keyframes fromLeft{from{opacity:0;translate:-34px 0}to{opacity:1;translate:0 0}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+/* decorative blobs: float + mouse parallax */
+.blob{border-radius:50%;translate:calc(var(--mx) * var(--p,16px)) calc(var(--my) * var(--p,16px));transition:translate .6s cubic-bezier(.2,.8,.2,1)}
+.slide.active .blob{animation:float 12s ease-in-out infinite alternate}
+@keyframes float{from{transform:translate(0,0) rotate(0)}to{transform:translate(10px,-14px) rotate(4deg)}}
+.slide.active .blob.f2{animation-duration:16s;animation-direction:alternate-reverse}
+
+/* chrome */
+.brand{position:absolute;left:66px;top:41px;font:400 21px/1.17 'Archivo',sans-serif;z-index:6}
+.brand b{display:block;font-weight:700}
+.brand.ind{color:var(--ind)}
+.pill{position:absolute;right:71px;top:46px;width:152px;height:45px;border-radius:30px;background:var(--grad);display:grid;place-items:center;font:700 20px 'Archivo',sans-serif;z-index:6}
+.pill.ind{color:#4b4fd8}
+.h{position:absolute;font:800 38px/1.08 'Archivo',sans-serif;text-transform:uppercase;z-index:4}
+.thin{font-family:'Inter Tight',sans-serif;font-weight:300;letter-spacing:-1px}
+.mono{font-family:'Courier Prime','Courier New',monospace}
+
+/* pink arrow */
+.arw{position:absolute;overflow:visible}
+.arw path{fill:none;stroke:#f7b3f8;stroke-width:22}
+.slide.active .arw.bob{animation:bob 2.4s ease-in-out infinite}
+@keyframes bob{50%{translate:6px -6px}}
+
+/* travelling dot */
+.dot{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:var(--c,#8fb0ff);box-shadow:0 0 10px 2px var(--c,#8fb0ff),0 0 28px 6px color-mix(in srgb,var(--c,#8fb0ff) 50%,transparent);z-index:30;pointer-events:none}
+
+/* small control buttons on slides */
+.btn{position:absolute;z-index:8;font:600 14px 'Inter',sans-serif;color:#fff;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.28);border-radius:22px;padding:8px 16px;cursor:pointer;transition:background .25s,border-color .25s,transform .2s}
+.btn:hover{background:rgba(255,255,255,.15);border-color:#fff}
+.btn:active{transform:scale(.96)}
+.btn.on{background:#fff;color:#111}
+
+.card{position:absolute;border-radius:14px;transition:transform .35s cubic-bezier(.2,.8,.2,1),box-shadow .35s,filter .35s,opacity .35s}
+.lift:hover{transform:translateY(-6px);box-shadow:0 18px 40px -12px rgba(122,92,255,.55)}
+
+/* ---------- Slide 1 / 32 ---------- */
+.bgHero{inset:0;background:linear-gradient(180deg,#000 0%,#000 27%,#1c1b21 40%,#36324a 58%,#463f78 77%,#4932b5 100%);background-size:100% 130%;}
+.slide.active .bgHero{animation:breathe 9s ease-in-out infinite alternate}
+@keyframes breathe{to{background-position:0 100%}}
+.net{inset:0;width:1456px;height:819px;opacity:.55}
+.t1{left:0;right:0;top:250px;text-align:center;font:500 79px/1.37 'Inter Tight',sans-serif;letter-spacing:-2.6px}
+.ln{display:block;overflow:hidden;padding:0 20px}
+.ln>span{display:inline-block}
+.slide.active .ln>span{animation:lineUp 1.1s cubic-bezier(.16,.9,.2,1) both;animation-delay:calc(var(--d) * .16s + .25s)}
+@keyframes lineUp{from{translate:0 108%;opacity:.2}to{translate:0 0;opacity:1}}
+.ty{left:0;right:0;top:300px;text-align:center;font-size:152px;line-height:1}
+.ty .tk{font:200 152px 'Inter Tight',sans-serif;letter-spacing:-6px}
+.ty .yu{font:900 152px 'Archivo',sans-serif;letter-spacing:-5px;background:linear-gradient(90deg,#fff 40%,#f5a8f5 50%,#fff 60%);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent}
+.slide.active .ty .yu{animation:sheen 4s ease-in-out infinite}
+@keyframes sheen{from{background-position:100% 0}to{background-position:0 0}}
+
+/* ---------- Slide 2 ---------- */
+.nm{position:absolute;font:400 28px 'Inter Tight',sans-serif;cursor:default;transition:color .3s,translate .3s}
+.nm i{font-style:normal;transition:color .3s}
+.nm:hover{translate:8px 0}
+.nm:hover i{color:var(--pink)}
+
+/* ---------- Slide 3 ---------- */
+.fc{background:#4d3a9d;border-radius:32px;display:flex;align-items:center;padding:0 24px;font-size:26px;line-height:1.2}
+.fc.lit{box-shadow:0 0 0 3px rgba(245,168,245,.9),0 0 40px rgba(245,168,245,.45)}
+.fc.fail{background:#7a2c4e;box-shadow:0 0 0 3px #ff7b7b,0 0 42px rgba(255,123,123,.55);animation:shake .5s}
+@keyframes shake{20%,60%{translate:-7px 0}40%,80%{translate:7px 0}}
+.qcard{background:#25297a;border-radius:34px;padding:26px 36px}
+.qcard ul{margin:16px 0 0 18px;font-size:24.5px;line-height:1.3}
+.qcard li{padding-left:6px;margin-bottom:2px}
+.ycard{background:#f3ec9c;border-radius:34px;padding:22px 36px;color:#c18d16}
+
+/* ---------- Slide 4 ---------- */
+.num{position:absolute;font:900 86px/1 'Archivo',sans-serif;background:linear-gradient(160deg,#fff1f4 5%,#f3b8c4 45%,#c98494 95%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 4px 4px rgba(0,0,0,.45))}
+.obj{position:absolute;left:176px;font-size:27px;line-height:1.35;transition:color .3s}
+.obj:hover{color:var(--pink)}
+
+/* ---------- Slide 5 ---------- */
+.acid{background:#9b88fb;border-radius:34px;padding:105px 32px 0;width:305px;height:435px;top:302px;transform-style:preserve-3d}
+.acid h3{font:700 27px 'Inter',sans-serif;text-align:center;margin-bottom:28px}
+.acid p{font-size:20px;line-height:1.38;color:#f3f0ff}
+.acid em{position:absolute;left:32px;right:30px;top:305px;font-size:16.5px;line-height:1.35;color:#fff}
+.lt{position:absolute;left:50%;top:-24px;width:96px;height:96px;margin-left:-48px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#e8e8ee 70%,#cfcfd8);box-shadow:0 8px 0 #b8b8c4,0 14px 22px rgba(0,0,0,.35);display:grid;place-items:center;font:800 64px/1 'Archivo',sans-serif}
+
+/* ---------- Slide 6 ---------- */
+.codew{background:#fff;color:#222;font-size:23px;line-height:1.3;padding:6px 6px}
+.codew span{display:block;white-space:pre;border-radius:3px;transition:background .3s}
+.codew span.hl{background:#e6e1ff}
+.codew span.ok{background:#c9f5e3}
+.svc{background:#9b88fb;border-radius:12px;height:51px;width:144px;display:grid;place-items:center;color:#111;font-size:19px}
+.db{width:144px;height:58px;border-radius:50%;background:#c9ccd6;color:#111;display:grid;place-items:center;font-size:19px}
+.slide.active .db{animation:dbPulse 2.4s ease-in-out infinite;animation-delay:var(--pd)}
+@keyframes dbPulse{0%,70%,100%{box-shadow:0 0 0 0 rgba(155,136,251,0)}35%{box-shadow:0 0 0 8px rgba(155,136,251,.35)}}
+.lav{background:#9b88fb;border-radius:14px;color:#111;display:grid;place-items:center;text-align:center;font-size:20px;line-height:1.38;padding:20px}
+
+/* ---------- Slide 7 ---------- */
+.node{background:#9b88fb;border-radius:12px;height:51px;width:144px;display:grid;place-items:center;color:#111;font-size:19px;transition:background .4s,box-shadow .4s}
+.node.lock{box-shadow:0 0 0 3px #ffcf6b}
+.node.good{background:#4fd8a6}
+.node.bad{background:#ff7b7b}
+.tag{position:absolute;width:144px;text-align:center;font:600 13px 'Inter',sans-serif;letter-spacing:.5px;color:#ffcf6b;opacity:0;transition:opacity .3s}
+.tag.show{opacity:1}
+.why{background:#f2b0f6;color:#111;border-radius:10px;display:grid;place-items:center;text-align:center;font-size:20px;line-height:1.3;width:540px}
+.st2{font:600 15px 'Inter',sans-serif;color:#ffcf6b;text-align:center;width:300px;left:242px;top:262px;opacity:0;transition:opacity .3s}
+.st2.show{opacity:1}
+
+/* ---------- Slide 8 ---------- */
+.tx{height:51px;border-radius:12px;display:grid;place-items:center;color:#111;font-size:20px;background:#9b88fb;transition:background .4s,box-shadow .4s,opacity .4s}
+.tx.red{background:#ff7b7b}
+.slide.run .t3{background:#9b88fb}
+.slide.run .t3.fail{background:#ff7b7b;animation:shake .5s}
+.slide.run .cx{opacity:0}
+.slide.run .cx.on{opacity:1}
+.tx.cur{box-shadow:0 0 0 3px #fff,0 0 30px rgba(255,255,255,.5)}
+.sline{stroke-width:3;fill:none}
+.slide.run .rl{stroke-dashoffset:var(--len)}
+.rl{stroke-dasharray:var(--len);stroke-dashoffset:0;transition:stroke-dashoffset .7s ease}
+.slide.run .rl.on{stroke-dashoffset:0}
+.why8{font:600 14px 'Inter',sans-serif;color:#ff9d9d;opacity:0;transition:opacity .3s}
+.why8.show{opacity:1}
+
+/* ---------- Slide 9 ---------- */
+.role{background:#22307a;border-radius:14px;text-align:center;padding-top:28px}
+.role b{display:block;font:700 19px 'Inter',sans-serif}
+.role span{display:block;margin-top:36px;font:300 41px 'Inter Tight',sans-serif;letter-spacing:-1px}
+.rdesc{background:#22307a;border-radius:14px;padding:38px 28px;font-size:19px;line-height:1.48;text-align:justify}
+.rdesc b{display:block;margin-bottom:12px;font-size:19px}
+.dim .rdesc:not(.hi),.dim .role:not(.hi){opacity:.35}
+.rdesc.hi,.role.hi{box-shadow:0 0 0 2px #f5a8f5,0 0 34px rgba(245,168,245,.35)}
+
+/* ---------- Tables ---------- */
+.tbl{position:absolute;display:grid;font-size:16px}
+.tbl>div{padding:0 7px;display:flex;align-items:center;border-right:1px solid #10184a;border-bottom:1px solid #10184a;transition:background .3s,color .3s}
+.tbl .hd{background:#24317d;font-weight:700}
+.tbl .r0{background:#192359}
+.tbl .r1{background:#1b2662}
+.tbl .row-hi{background:#3a3f9a!important}
+.tbl .cmp-hi{background:#7a2c4e!important;color:#fff}
+
+/* ---------- Slide 11 / 12 ---------- */
+.svb{background:#212a6b;border-radius:40px;display:grid;place-items:center;font:700 21px 'Inter',sans-serif;transition:box-shadow .3s}
+.svb.glow{box-shadow:0 0 0 3px var(--gc,#4fd8a6),0 0 30px var(--gc,#4fd8a6)}
+.bus{background:#222b6d;border-radius:18px;display:grid;place-items:center;color:#b9c2f5;font:700 20px 'Inter',sans-serif}
+.evl{font-size:17px;color:#4fd8a6;position:absolute;line-height:1.2}
+.prow{background:#222b6d;border-radius:22px;display:flex;align-items:center;cursor:pointer;transition:box-shadow .3s,background .3s}
+.prow.act{box-shadow:0 0 0 2px currentColor;background:#2a3480}
+.prow b{width:150px;padding-left:66px;flex:none;font-size:20px}
+.prow span{font-size:18px;line-height:1.55;color:#fff}
+.gp{background:linear-gradient(90deg,#7a5cff,#f5a8f5);border-radius:40px;display:grid;place-items:center;font:700 21px 'Inter',sans-serif;transition:box-shadow .3s,transform .3s}
+.gp.glow{box-shadow:0 0 0 3px #fff,0 0 34px rgba(255,255,255,.55);transform:scale(1.05)}
+.orch{background:linear-gradient(90deg,#7a5cff,#f5a8f5);border-radius:50%/46%;display:grid;place-items:center;text-align:center;font:700 21px/1.25 'Inter',sans-serif}
+.slide.active .orch{animation:orbPulse 2.6s ease-in-out infinite}
+@keyframes orbPulse{50%{box-shadow:0 0 0 12px rgba(245,168,245,.12),0 0 50px rgba(122,92,255,.45)}}
+.stb{background:linear-gradient(90deg,#7a5cff,#f5a8f5);border-radius:8px;height:58px;display:flex;align-items:center;padding-left:18px;font:700 20px 'Inter',sans-serif;transition:transform .35s,box-shadow .35s,opacity .35s}
+.cycling .stb{opacity:.5}
+.cycling .stb.cur{opacity:1;transform:translateX(-14px);box-shadow:0 0 30px rgba(245,168,245,.55)}
+
+/* ---------- Sequence diagrams ---------- */
+.sh{position:absolute;top:236px;height:46px;width:150px;margin-left:-75px;border-radius:30px;display:grid;place-items:center;font:700 19px 'Inter',sans-serif}
+.sh.g{background:linear-gradient(90deg,#7a5cff,#f5a8f5)}
+.sh.n{background:#1e2a6e;width:236px;margin-left:-118px;border-radius:8px}
+.msg{position:absolute;inset:0;pointer-events:none;transition:opacity .3s}
+.msg.pending{opacity:0}
+.msg line{stroke-dasharray:var(--len);stroke-dashoffset:0;transition:stroke-dashoffset .65s cubic-bezier(.5,0,.3,1)}
+.msg.pending line{stroke-dashoffset:var(--len)}
+.msg polygon{transition:opacity .2s .55s}
+.msg.pending polygon{opacity:0;transition:none}
+.msg .lb{position:absolute;font-size:17px;white-space:nowrap}
+.hint{left:0;right:0;bottom:16px;text-align:center;font:500 13px 'Inter',sans-serif;color:rgba(255,255,255,.55);transition:opacity .4s}
+
+/* ---------- Slide 16 ---------- */
+.anc{background:#172061;border-radius:14px;padding:22px 26px;cursor:pointer}
+.anc b{display:block;font-size:22px;margin-bottom:12px}
+.anc span{font-size:20px;color:#b8c0e8;line-height:1.4}
+.gpl{height:52px;border-radius:26px;background:linear-gradient(90deg,#7a5cff,#f5a8f5);display:flex;align-items:center;padding-left:18px;font:700 20px 'Inter',sans-serif;transition:opacity .35s,transform .35s,box-shadow .35s}
+.mapping .gpl{opacity:.25}
+.mapping .gpl.hi{opacity:1;transform:translateX(10px);box-shadow:0 0 28px rgba(245,168,245,.55)}
+.mapping .anc{opacity:.45}
+.mapping .anc.hi{opacity:1;box-shadow:0 0 0 2px #ff7b7b}
+
+/* ---------- Slide 17 ---------- */
+.nb{background:#1d2a6c;border-radius:14px;display:grid;place-items:center;text-align:center;font:700 22px/1.3 'Inter',sans-serif;transition:box-shadow .3s}
+.nb.ok{box-shadow:0 0 0 3px #4fd8a6,0 0 30px rgba(79,216,166,.5)}
+.nb.ko{box-shadow:0 0 0 3px #ff7b7b,0 0 30px rgba(255,123,123,.5)}
+.gcard{background:linear-gradient(90deg,#7a5cff,#f5a8f5);border-radius:26px;padding:30px 20px;cursor:pointer}
+.gcard b{display:block;font-size:20px;margin-bottom:26px}
+.gcard span{font-size:20px;line-height:1.45}
+.gcard.act{box-shadow:0 0 0 3px #fff,0 0 40px rgba(245,168,245,.6)}
+.bdg{position:absolute;font:700 13px 'Inter',sans-serif;padding:4px 10px;border-radius:12px;opacity:0;transition:opacity .3s,scale .3s;scale:.7;z-index:9}
+.bdg.show{opacity:1;scale:1}
+
+/* ---------- Slide 18 ---------- */
+.dash{border:3px dashed #44d7a8;border-radius:18px;background:#101944;transition:box-shadow .4s}
+.dash.glow{box-shadow:0 0 0 3px rgba(68,215,168,.25),0 0 40px rgba(68,215,168,.35)}
+.stp{position:absolute;display:flex;gap:16px;align-items:flex-start;width:500px;transition:opacity .35s}
+.stp i{flex:none;width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#7a5cff,#f5a8f5);display:grid;place-items:center;font:700 20px 'Inter',sans-serif;color:#1b1450;font-style:normal;transition:box-shadow .3s,scale .3s}
+.stp span{font-size:18px;line-height:1.45;text-align:justify;padding-top:8px}
+.looping .stp{opacity:.4}
+.looping .stp.cur{opacity:1}
+.looping .stp.cur i{box-shadow:0 0 0 4px rgba(245,168,245,.3),0 0 22px #f5a8f5;scale:1.1}
+.chip{position:absolute;left:12px;right:12px;bottom:12px;font:600 12px 'Courier Prime',monospace;text-align:center;padding:5px 4px;border-radius:6px;background:#0c133a;color:#ffcf6b;transition:color .3s,background .3s}
+.chip.sent{color:#4fd8a6}
+
+/* ---------- Code ---------- */
+.code{background:#0a0e24;border:2px solid #5a6bd0;border-radius:24px;padding:24px 16px;color:#cfd3e6;font-size:17px;line-height:1.36}
+.code .tl{display:block;white-space:pre;width:max-content}
+.slide.active .code .tl{animation:typing .5s steps(28,end) both;animation-delay:calc(var(--d) * var(--sp,.22s) + .5s)}
+@keyframes typing{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+.code .c{color:#8d97c9}
+.code .s{color:#f5c2f5}
+.ncard{background:#172061;border-radius:12px;padding:26px 26px}
+.ncard h4{font:700 22px 'Courier Prime',monospace;color:#8fb0ff;margin-bottom:18px}
+.ncard p{font-size:21px;line-height:1.45}
+
+/* ---------- Slide 20 ---------- */
+.big{background:linear-gradient(90deg,#7a5cff,#f5a8f5);border-radius:34px;padding:22px 44px}
+.big h3{text-align:center;margin-bottom:28px}
+.big p{font-size:18.5px;line-height:1.45;text-align:justify}
+.big h5{font:700 22px 'Inter',sans-serif;margin:18px 0 8px}
+.big ul{margin-left:22px;font-size:18.5px;line-height:1.4;width:280px}
+
+/* ---------- Slide 21 ---------- */
+.orb{width:84px;height:84px;border-radius:50%;background:linear-gradient(90deg,#4b52f2,#000)}
+.slide.active .orb{animation:spinGrad 6s linear infinite}
+@keyframes spinGrad{to{transform:rotate(360deg)}}
+.pt h3{font:300 37px 'Inter Tight',sans-serif;letter-spacing:-1px;margin-bottom:22px}
+.pt p{font-size:18.5px;line-height:1.5;text-align:justify;width:482px}
+
+/* ---------- Slide 22 ---------- */
+.lcard{background:#1b236a;border-radius:36px;padding:26px 18px}
+.lcard h3{text-align:center;font:700 27px 'Inter',sans-serif;margin-bottom:20px}
+.lcard p{font-size:19px}
+.lcard ul{margin-left:34px;font-size:19px;line-height:1.4}
+.acard{background:#1b236a;border-radius:36px;padding:22px 44px;text-align:center}
+.acard h3{font:300 37px 'Inter Tight',sans-serif;letter-spacing:-1px;margin-bottom:22px}
+.acard p{font-size:19px;line-height:1.5;text-align:justify}
+
+/* ---------- Slide 23 ---------- */
+.order{background:#31285e;border-radius:38px}
+.step{position:absolute;left:22px;display:flex;align-items:center;gap:26px;font-size:27px;transition:color .4s}
+.step .ic{width:64px;height:58px;display:grid;place-items:center;flex:none}
+.step.red{color:#ff9d9d}
+.vline{position:absolute;left:51px;width:3px;background:#fff;border-radius:2px}
+.dots i{display:inline-block;width:6px;height:6px;border-radius:50%;background:#fff;margin:0 2px}
+.slide.active .dots i{animation:blink 1.2s infinite}
+.dots i:nth-child(2){animation-delay:.2s!important}.dots i:nth-child(3){animation-delay:.4s!important}
+@keyframes blink{50%{opacity:.2}}
+.npl{background:#1d2462;border-radius:31px;height:62px;display:grid;place-items:center;text-align:center;font-size:16px;color:#dfe3ff}
+.saldo{cursor:pointer;font-size:25px;line-height:1.3;text-decoration:underline dotted rgba(255,255,255,.4);text-underline-offset:6px}
+
+/* ---------- Slide 25 ---------- */
+.ncirc{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font:700 20px 'Inter',sans-serif;color:#1b1f4a}
+.term{background:#0b0f26;border:2px solid #5a6bd0;border-radius:14px;padding:18px 22px;cursor:pointer;transition:border-color .3s,box-shadow .3s}
+.term:hover{border-color:#a3b3ff;box-shadow:0 0 30px rgba(90,107,208,.45)}
+.term .cmd{font-size:20px;color:#cfd3e6;white-space:pre;display:inline-block}
+.term .out{display:none;margin-top:6px;font:13.5px/1.45 'Courier Prime',monospace;white-space:pre}
+.term.run .cmd{animation:typing .9s steps(40,end) both}
+.term.run .out{display:block;animation:fadeIn .4s 1s both}
+.term.run{border-color:#fff}
+.dsc{font-size:22px;line-height:1.35;transition:color .3s,translate .3s}
+.dsc.hi{color:#fff;translate:8px 0;text-shadow:0 0 18px rgba(255,255,255,.4)}
+
+/* ---------- Slide 26/27/28/29 ---------- */
+.sc{background:#172061;border-radius:12px;padding:24px 28px}
+.sc h4{font-size:22px;margin-bottom:22px}
+.sc p{font-size:21px;line-height:1.45}
+.col4{background:#172061;border-radius:10px;padding:16px 22px}
+.col4 h4{font-size:22px;margin-bottom:22px}
+.col4 ul{list-style:none;font-size:19px;line-height:1.35}
+.col4 li{position:relative;padding-left:40px;margin-bottom:12px}
+.col4 li::before{content:"";position:absolute;left:6px;top:9px;width:6px;height:6px;border-radius:50%;background:#fff}
+.fb{background:#1e2a6e;border-radius:12px;display:grid;place-items:center;text-align:center;font:700 21px/1.3 'Inter',sans-serif;transition:box-shadow .3s}
+.fb.glow{box-shadow:0 0 0 3px #8fb0ff,0 0 30px rgba(143,176,255,.5)}
+.fb.pu{background:#5a3b8e}
+.lbl{border-radius:8px;display:grid;place-items:center;font:700 17px 'Inter',sans-serif;background:#0f1640}
+.rem{background:#172061;border-radius:8px;display:flex;align-items:center;gap:30px;padding:0 28px;transition:transform .35s,box-shadow .35s}
+.rem:hover{transform:translateX(10px);box-shadow:-6px 0 0 #8fb3ff}
+.rem i{flex:none;width:68px;height:68px;border-radius:50%;background:#8fb3ff;color:#1b1f4a;display:grid;place-items:center;font:700 26px 'Inter',sans-serif;font-style:normal}
+.rem b{display:block;font-size:22px;margin-bottom:10px}
+.rem span{font-size:16.5px;color:#c8cff0;line-height:1.45}
+
+/* ---------- Quiz ---------- */
+.q{position:absolute;left:82px;display:flex;gap:30px}
+.q i{flex:none;width:36px;height:36px;margin-top:12px;border-radius:50%;background:#8fb3ff;color:#1b1f4a;display:grid;place-items:center;font:700 16px 'Inter',sans-serif;font-style:normal;transition:background .3s}
+.q.done i{background:#4fd8a6}
+.q.miss i{background:#ff7b7b}
+.q b{display:block;font-size:20px;margin-bottom:14px}
+.opt{font-size:17px;color:#b8c4f0;cursor:pointer;padding:2px 6px;margin-right:4px;border-radius:6px;transition:background .25s,color .25s}
+.opt:hover{background:rgba(143,179,255,.15);color:#fff}
+.opt.right{background:rgba(79,216,166,.2);color:#4fd8a6}
+.opt.wrong{background:rgba(255,123,123,.18);color:#ff9d9d;text-decoration:line-through}
+.answered .opt{pointer-events:none}
+.score{font:600 15px 'Inter',sans-serif;padding:8px 16px;border-radius:20px;border:1px solid rgba(255,255,255,.3);transition:background .3s}
+
+/* ---------- Slide 31 ---------- */
+.ref{position:absolute;left:93px;font-size:22px;line-height:1.45}
+.ref a{display:block;color:#2f2fe8;font-size:20px;text-decoration:underline;transition:color .25s}
+.ref a:hover{color:#8fb0ff}
+
+/* ---------- UI overlay ---------- */
+#bar{position:fixed;left:0;bottom:0;height:3px;width:0;background:var(--grad);z-index:50;transition:width .6s cubic-bezier(.2,.8,.2,1)}
+#ui{position:fixed;right:16px;bottom:14px;display:flex;gap:6px;align-items:center;z-index:51;opacity:0;transition:opacity .4s;font:500 13px 'Inter',sans-serif}
+body.ui #ui{opacity:1}
+#ui button{height:34px;min-width:34px;padding:0 12px;border-radius:17px;border:1px solid rgba(255,255,255,.2);background:rgba(20,20,40,.7);color:#fff;cursor:pointer;backdrop-filter:blur(6px)}
+#ui button:hover{background:rgba(122,92,255,.6)}
+#ui .cnt{padding:0 10px;color:rgba(255,255,255,.75);font-variant-numeric:tabular-nums}
+#help{position:fixed;left:50%;bottom:22px;translate:-50% 0;z-index:51;font:500 13px 'Inter',sans-serif;color:rgba(255,255,255,.75);background:rgba(20,20,40,.75);border:1px solid rgba(255,255,255,.15);padding:8px 16px;border-radius:20px;backdrop-filter:blur(6px);transition:opacity .8s}
+#help.hide{opacity:0;pointer-events:none}
+#ov{position:fixed;inset:0;z-index:60;background:rgba(6,6,18,.94);backdrop-filter:blur(10px);overflow:auto;padding:36px 30px;display:none}
+#ov.open{display:block;animation:fadeIn .3s}
+#ov h2{font:700 20px 'Archivo',sans-serif;margin:0 auto 22px;max-width:1240px}
+#ov .grid{display:grid;grid-template-columns:repeat(auto-fill,280px);gap:20px;justify-content:center;max-width:1260px;margin:0 auto}
+.th{position:relative;width:280px;height:157.5px;border-radius:10px;overflow:hidden;cursor:pointer;outline:2px solid rgba(255,255,255,.08);transition:outline-color .25s,transform .25s;background:#000}
+.th:hover{outline-color:#9b88fb;transform:translateY(-4px)}
+.th.cur{outline:3px solid #f5a8f5}
+.th .slide{opacity:1!important;visibility:visible!important;filter:none!important;transition:none!important;transform:scale(.1923)!important;transform-origin:0 0;width:1456px;height:819px;pointer-events:none}
+.th .no{position:absolute;left:8px;bottom:6px;font:700 12px 'Inter',sans-serif;background:rgba(0,0,0,.65);padding:2px 8px;border-radius:8px}
+</style>
+</head>
+<body>
+
+<!-- shared arrow markers -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <marker id="mBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#8fb0ff"/></marker>
+    <marker id="mGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#4fd8a6"/></marker>
+  </defs>
+</svg>
+
+<div id="stage">
+
+<!-- ============ 01 ============ -->
+<section class="slide" data-key="s1">
+  <div class="ab bgHero"></div>
+  <canvas class="ab net" width="1456" height="819"></canvas>
+  <h1 class="ab t1">
+    <span class="ln" style="--d:0"><span>DISTRIBUTED</span></span>
+    <span class="ln" style="--d:1"><span>TRANSACTION, SAGA, DAN</span></span>
+    <span class="ln" style="--d:2"><span>TRANSACTIONAL OUTBOX</span></span>
+  </h1>
+  <div class="ab a" style="left:82px;top:704px;font:400 25px 'Inter Tight',sans-serif;--d:7">kelompok 2</div>
+  <div class="ab a f" style="left:722px;top:704px;font-size:25px;--d:8">-</div>
+</section>
+
+<!-- ============ 02 ============ -->
+<section class="slide">
+  <div class="ab blob" style="left:316px;top:-115px;width:610px;height:610px;background:linear-gradient(90deg,#f7a6f6 0%,#a36cab 38%,#4a2a46 70%,#000 100%);--p:22px"></div>
+  <div class="ab blob f2" style="left:795px;top:200px;width:700px;height:700px;border-radius:0;background:linear-gradient(140deg,#000 18%,#191c5a 52%,#4b52f2 92%);--p:-12px"></div>
+  <div class="ab" style="left:1135px;top:530px;width:760px;height:760px;border-radius:50%;background:#000"></div>
+  <h2 class="ab a thin" style="left:400px;width:600px;top:150px;text-align:center;font-size:68px;letter-spacing:-2px;--d:0">Meet the Team</h2>
+  <div class="nm a l" style="left:128px;top:337px;--d:2">1.&nbsp;<i>Melany Kresna Putri</i> 24102015</div>
+  <div class="nm a l" style="left:122px;top:414px;--d:3">2.&nbsp;<i>Devia Amanda Prameswari</i> 24102007</div>
+  <div class="nm a l" style="left:122px;top:491px;--d:4">3.&nbsp;<i>M. Auril Aditya Narendra</i> 24102018</div>
+  <div class="nm a l" style="left:122px;top:568px;--d:5">4.&nbsp;<i>Audina Ike Wati</i> 24102028</div>
+  <div class="nm a l" style="left:833px;top:370px;--d:6">5.&nbsp;<i>Viqro Tunada Hanunnisa</i> 24102022</div>
+  <div class="nm a l" style="left:833px;top:431px;--d:7">6.&nbsp;<i>Syani Carissa Syawaluna</i> 24102038</div>
+  <div class="nm a l" style="left:835px;top:491px;--d:8">7.&nbsp;<i>Fichri Aditya Nugraha</i> 24102010</div>
+</section>
+
+<!-- ============ 03 ============ -->
+<section class="slide" data-key="s3">
+  <div class="ab blob" style="left:-100px;top:-110px;width:270px;height:300px;background:linear-gradient(135deg,#d58df0,#2a1a3a 80%);--p:14px"></div>
+  <div class="ab blob f2" style="left:1055px;top:325px;width:420px;height:520px;border-radius:0;background:linear-gradient(200deg,#000 10%,#1b1f60 50%,#4b52f2 100%);--p:-10px"></div>
+  <div class="ab" style="left:1310px;top:560px;width:420px;height:420px;border-radius:50%;background:#000"></div>
+  <div class="h a" style="left:205px;top:168px;font-size:37px;--d:0">Checkout berhasil separuh: stok sudah terpotong,<br>pembayaran gagal, pesanan menggantung</div>
+  <div class="card fc ab a" style="left:60px;top:318px;width:340px;height:118px;--d:2">Pembeli menekan Bayar di aplikasi mobile</div>
+  <div class="card fc ab a" style="left:420px;top:318px;width:292px;height:118px;--d:3">Layanan Pesanan menyimpan pesanan. Berhasil</div>
+  <div class="card fc ab a" style="left:730px;top:318px;width:268px;height:118px;--d:4">Layanan Stok mengurangi 2 unit Berhasil</div>
+  <div class="card fc ab a" style="left:1017px;top:318px;width:340px;height:118px;--d:5">Layanan Pembayaran menolak. Saldo kurang</div>
+  <div class="qcard ab a lift card" style="left:60px;top:482px;width:560px;height:287px;--d:7">
+    <b style="font-size:23px">Pertanyaan untuk kelas</b>
+    <ul>
+      <li>Siapa yang mengembalikan 2 unit stok tadi?</li>
+      <li>Bisakah layanan Pesanan me-rollback database milik layanan Stok?</li>
+      <li>Bagaimana layanan lain pasti tahu bahwa pesanan sudah dibuat?</li>
+    </ul>
+  </div>
+  <div class="ycard ab a lift card" style="left:692px;top:482px;width:665px;height:287px;--d:8">
+    <b style="font-size:27px;color:#b57f0e;display:block;margin-bottom:12px">Akar masalah</b>
+    <div style="font-size:26px;line-height:1.24">Satu proses bisnis menyentuh beberapa layanan yang masing-masing punya database sendiri. Tidak ada satu transaksi pun yang bisa membungkus semuanya, sehingga kegagalan di tengah jalan meninggalkan data setengah jadi</div>
+  </div>
+</section>
+
+<!-- ============ 04 ============ -->
+<section class="slide">
+  <div class="ab" style="left:0;top:193px;right:0;bottom:0;background:linear-gradient(140deg,#000 36%,#3a2840 54%,#9c6fae 76%,#f2a9f2 100%)"></div>
+  <svg class="ab" style="left:0;top:0" width="1456" height="819"><line x1="680" y1="470" x2="1040" y2="819" stroke="rgba(255,255,255,.35)" stroke-width="1"/></svg>
+  <div class="h a" style="left:82px;top:160px;font-size:37px;--d:0">Setelah 60 menit, kita mampu merancang proses lintas<br>layanan yang tetap konsisten</div>
+  <div class="num a z" style="left:108px;top:304px;--d:2">1</div>
+  <div class="num a z" style="left:104px;top:405px;--d:3">2</div>
+  <div class="num a z" style="left:100px;top:497px;--d:4">3</div>
+  <div class="num a z" style="left:102px;top:586px;--d:5">4</div>
+  <div class="obj a l" style="top:318px;--d:2">Menjelaskan mengapa transaksi lokal (ACID) tidak cukup ketika<br>satu proses menyentuh beberapa layanan</div>
+  <div class="obj a l" style="top:408px;--d:3">Membedakan saga koreografi dan orkestrasi serta konsep<br>transaksi kompensasi</div>
+  <div class="obj a l" style="top:498px;--d:4">Menjelaskan transactional outbox untuk mencegah data<br>tersimpan tanpa event</div>
+  <div class="obj a l" style="top:588px;--d:5">Merancang alur pesanan, stok, pembayaran, dan pengiriman</div>
+</section>
+
+<!-- ============ 05 ============ -->
+<section class="slide" data-key="s5">
+  <div class="ab blob" style="left:-330px;top:-330px;width:950px;height:1000px;background:linear-gradient(135deg,#4b52f2 25%,#16184a 60%,#000 75%);--p:16px"></div>
+  <div class="ab blob f2" style="left:780px;top:455px;width:560px;height:560px;background:linear-gradient(90deg,#f5a8f5,#7c4f84 50%,#000);--p:-14px"></div>
+  <div class="h a" style="left:82px;top:170px;font-size:38px;--d:0">Di dalam satu database, transaksi dijamin ACID: semua<br>berhasil atau tidak sama sekali</div>
+  <div class="card acid ab a tilt" style="left:82px;--d:2"><div class="lt" style="color:#f07a2a">A</div><h3>Atomicity</h3><p>Semua operasi berhasil, atau tidak ada yang berhasil</p><em>Contoh: Pesanan &amp; stok tersimpan bersama, atau keduanya batal</em></div>
+  <div class="card acid ab a tilt" style="left:413px;--d:3"><div class="lt" style="color:#9a5cf0">C</div><h3>Consistency</h3><p>Data berpindah dari satu status valid ke status valid lain</p><em>Contoh: Stok tidak pernah bernilai negatif</em></div>
+  <div class="card acid ab a tilt" style="left:744px;--d:4"><div class="lt" style="color:#8b5cf6">I</div><h3>Isolation</h3><p>Transaksi bersamaan memberi hasil sama seperti dijalankan berurutan</p><em>Contoh: Dua pembeli tidak mendapat unit terakhir yang sama</em></div>
+  <div class="card acid ab a tilt" style="left:1075px;--d:5"><div class="lt" style="color:#f0628f">D</div><h3>Durability</h3><p>Perubahan tetap tersimpan setelah commit, meski terjadi kegagalan</p><em>Contoh: Server mati setelah COMMIT, pesanan tetap ada</em></div>
+</section>
+
+<!-- ============ 06 ============ -->
+<section class="slide" data-key="s6">
+  <div class="ab blob" style="left:-330px;top:-320px;width:950px;height:985px;background:linear-gradient(135deg,#4b52f2 30%,#1a1d5a 60%,#000 78%);--p:14px"></div>
+  <div class="ab blob f2" style="left:915px;top:610px;width:560px;height:560px;background:linear-gradient(135deg,#4b52f2,#14163e 60%);--p:-12px"></div>
+  <div class="h a" style="left:66px;top:142px;font-size:37px;--d:0">Di microservices, tiap layanan punya database sendiri, sehingga<br>ACID tidak lagi menyeberang</div>
+  <div class="ab a thin" style="left:82px;top:262px;font-size:40px;--d:2">Monolith: satu database</div>
+  <div class="ab a codew mono" style="left:82px;top:323px;width:393px;height:172px;--d:3">
+    <span>BEGIN;</span><span> INSERT pesanan ...;</span><span> UPDATE stok ...;</span><span> INSERT pembayaran ...;</span><span>COMMIT; --atau ROLLBACK</span>
+  </div>
+  <div class="ab a" style="left:82px;top:513px;font-size:18px;line-height:1.4;--d:4">Satu transaksi membungkus semuanya.<br>Gagal dimanapun, semuanya dibatalkan<br>otomatis.</div>
+  <div class="ab a thin" style="left:640px;top:262px;font-size:40px;--d:2">Microservices: database per layanan</div>
+  <svg class="ab a f" style="left:0;top:0;--d:4" width="1456" height="819">
+    <g stroke="#fff" stroke-width="3"><line x1="639" y1="387" x2="639" y2="427"/><line x1="826" y1="387" x2="826" y2="427"/><line x1="1013" y1="387" x2="1013" y2="427"/><line x1="1200" y1="387" x2="1200" y2="427"/></g>
+  </svg>
+  <div class="ab a svc" style="left:567px;top:336px;--d:3">Pesanan</div>
+  <div class="ab a svc" style="left:754px;top:336px;--d:4">Stok</div>
+  <div class="ab a svc" style="left:941px;top:336px;--d:5">Pembayaran</div>
+  <div class="ab a svc" style="left:1128px;top:336px;--d:6">Pengiriman</div>
+  <div class="ab a db" style="left:567px;top:427px;--d:4;--pd:0s">DB</div>
+  <div class="ab a db" style="left:754px;top:427px;--d:5;--pd:.6s">DB</div>
+  <div class="ab a db" style="left:941px;top:427px;--d:6;--pd:1.2s">DB</div>
+  <div class="ab a db" style="left:1128px;top:427px;--d:7;--pd:1.8s">DB</div>
+  <div class="ab a lav card lift" style="left:566px;top:552px;width:314px;height:185px;padding-top:50px;--d:8">Data terenkapsulasi, skema bebas, skala mandiri, kegagalan terisolasi</div>
+  <div class="ab a lav card lift" style="left:915px;top:552px;width:327px;height:185px;padding-top:50px;--d:9">Jaminan ACID tidak berlaku lintas penyimpanan data yang dikelola terpisah</div>
+  <div class="ab a thin" style="left:638px;top:527px;font-size:40px;--d:8">Manfaat</div>
+  <div class="ab a thin" style="left:965px;top:521px;font-size:40px;--d:9">Konsekuensi</div>
+</section>
+
+<!-- ============ 07 ============ -->
+<section class="slide" data-key="s7">
+  <div class="ab blob" style="left:852px;top:250px;width:640px;height:600px;border-radius:0;background:linear-gradient(200deg,#000 15%,#5a3a62 55%,#f3a9f3 100%);--p:-12px"></div>
+  <div class="ab" style="left:1130px;top:528px;width:720px;height:720px;border-radius:50%;background:#000"></div>
+  <div class="h a" style="left:82px;top:168px;font-size:38px;--d:0">Two-phase commit mengunci semua peserta sampai<br>koordinator memutuskan</div>
+  <svg class="ab a f" style="left:0;top:0;--d:3" width="1456" height="819"><g stroke="#fff" stroke-width="3"><line x1="392" y1="348" x2="158" y2="506"/><line x1="392" y1="348" x2="398" y2="503"/><line x1="392" y1="348" x2="618" y2="497"/></g></svg>
+  <div class="ab a node co" style="left:320px;top:298px;--d:2">Koordinator</div>
+  <div class="ab st2">&nbsp;</div>
+  <div class="ab a node pp" style="left:82px;top:504px;--d:4">Pesanan</div>
+  <div class="ab a node pp" style="left:319px;top:504px;--d:5">Stok</div>
+  <div class="ab a node pp" style="left:556px;top:504px;--d:6">Pembayaran</div>
+  <div class="tag" style="left:82px;top:561px">&nbsp;</div>
+  <div class="tag" style="left:319px;top:561px">&nbsp;</div>
+  <div class="tag" style="left:556px;top:561px">&nbsp;</div>
+  <div class="ab a" style="left:82px;top:598px;font-size:19px;line-height:1.45;--d:7">Fase 1: “siap commit?” - semua mengunci data<br>Fase 2: semua “siap” - COMMIT; satu “tidak” - ABORT</div>
+  <button class="btn b-ok" style="left:82px;top:680px">Simulasi: semua siap</button>
+  <button class="btn b-ab" style="left:270px;top:680px">Simulasi: satu menolak</button>
+  <div class="ab a thin" style="left:728px;top:278px;font-size:39px;--d:2">Mengapa kurang cocok untuk microservices</div>
+  <div class="ab a why card" style="left:728px;top:358px;height:52px;--d:3">Semua peserta harus aktif pada saat yang sama.</div>
+  <div class="ab a why card" style="left:728px;top:435px;height:64px;--d:4">Data terkunci selama menunggu keputusan,<br>sehingga respons melambat</div>
+  <div class="ab a why card" style="left:728px;top:512px;height:64px;--d:5">Koordinator yang mati membuat peserta<br>menggantung</div>
+  <div class="ab a why card" style="left:728px;top:589px;height:64px;--d:6">Layanan jadi saling terikat erat, padahal tujuan<br>microservices justru longgar</div>
+</section>
+
+<!-- ============ 08 ============ -->
+<section class="slide" data-key="s8">
+  <div class="ab blob" style="left:-330px;top:-300px;width:900px;height:965px;background:linear-gradient(135deg,#f7a8f7 20%,#7a4a80 50%,#000 75%);--p:14px"></div>
+  <div class="h a" style="left:82px;top:140px;font-size:38px;--d:0">Saga memecah satu proses menjadi urutan transaksi<br>lokal, dan membatalkannya dengan kompensasi</div>
+  <svg class="ab" style="left:0;top:0" width="1456" height="819">
+    <g class="sline"><line x1="273" y1="331" x2="322" y2="330" stroke="#b9f56a" stroke-width="3"/><line x1="513" y1="331" x2="562" y2="333" stroke="#b9f56a" stroke-width="3"/><line x1="786" y1="334" x2="812" y2="333" stroke="#b9f56a" stroke-width="3"/></g>
+    <line class="rl r1" x1="604" y1="356" x2="561" y2="440" stroke="#ff7b7b" stroke-width="3" style="--len:95"/>
+    <line class="rl r2" x1="337" y1="449" x2="306" y2="449" stroke="#ff7b7b" stroke-width="3" style="--len:31"/>
+  </svg>
+  <div class="ab a tx t1" style="left:82px;top:305px;width:191px;--d:2">T1 Buat pesanan</div>
+  <div class="ab a tx t2" style="left:322px;top:305px;width:191px;--d:3">T2 Reservasi stok</div>
+  <div class="ab a tx red t3" style="left:562px;top:305px;width:224px;--d:4">T3 Tagih pembayaran</div>
+  <div class="ab a tx t4" style="left:812px;top:305px;width:224px;--d:5">T4 Buat pengiriman</div>
+  <div class="ab why8" style="left:562px;top:268px">Saldo kurang, pembayaran gagal</div>
+  <div class="ab a tx red cx c1" style="left:82px;top:423px;width:224px;--d:6">C1 Batalkan pesanan</div>
+  <div class="ab a tx red cx c2" style="left:337px;top:423px;width:224px;--d:6">C2 Lepas stok</div>
+  <button class="btn b-play" style="left:620px;top:430px">Jalankan saga</button>
+  <div class="ab a thin" style="left:82px;top:515px;font-size:31px;--d:7">Setiap transaksi lokal..</div>
+  <ul class="ab a" style="left:108px;top:562px;font-size:20px;line-height:1.36;--d:8">
+    <li>Menyelesaikan pekerjaannya secara atomik di satu<br>layanan</li><li>Memperbarui database milik layanan itu</li><li>Memicu langkah berikutnya lewat event atau pesan</li>
+  </ul>
+  <div class="ab a thin" style="left:895px;top:443px;font-size:29px;--d:8">Konsekuensinya</div>
+  <div class="ab a lav card lift" style="left:889px;top:488px;width:476px;height:168px;color:#111;font-size:21px;--d:9">Konsistensi tercapai pada akhirnya (eventual), bukan seketika. Di antara langkah, data boleh sementara berbeda antarlayanan</div>
+</section>
+
+<!-- ============ 09 ============ -->
+<section class="slide" data-key="s9">
+  <div class="ab blob" style="left:855px;top:-120px;width:780px;height:740px;background:linear-gradient(200deg,#4b52f2 25%,#1b1f60 55%,#000 75%);--p:-14px"></div>
+  <div class="ab blob f2" style="left:40px;top:690px;width:500px;height:400px;background:linear-gradient(90deg,#2a1b30,#f5a8f5);--p:10px"></div>
+  <div class="h a" style="left:130px;top:135px;font-size:37px;--d:0">Tiap langkah saga punya peran: bisa dikompensasi,<br>titik tanpa kembali, atau bisa diulang</div>
+  <div class="ab a role card" data-m="0" style="left:37px;top:272px;width:295px;height:172px;--d:2"><b>Buat Pesanan</b><span>Kompensabel</span></div>
+  <div class="ab a role card" data-m="0" style="left:387px;top:272px;width:301px;height:172px;--d:3"><b>Reservasi stok</b><span>Kompensabel</span></div>
+  <div class="ab a role card" data-m="1" style="left:743px;top:272px;width:301px;height:172px;--d:4"><b>Tagih Pembayaran</b><span>Pivot</span></div>
+  <div class="ab a role card" data-m="2" style="left:1099px;top:272px;width:301px;height:172px;--d:5"><b>Kirim &amp; notifikasi</b><span>Bisa diulang</span></div>
+  <svg class="arw a l" style="left:328px;top:322px;--d:3" width="78" height="86" viewBox="0 0 100 100"><path d="M5 50 H85 M50 12 L88 50 L50 88" style="stroke-width:20"/></svg>
+  <svg class="arw a l" style="left:684px;top:322px;--d:4" width="78" height="86" viewBox="0 0 100 100"><path d="M5 50 H85 M50 12 L88 50 L50 88" style="stroke-width:20"/></svg>
+  <svg class="arw a l" style="left:1042px;top:322px;--d:5" width="78" height="86" viewBox="0 0 100 100"><path d="M5 50 H85 M50 12 L88 50 L50 88" style="stroke-width:20"/></svg>
+  <div class="ab a rdesc card" style="left:37px;top:522px;width:426px;height:230px;--d:6"><b>Transaksi kompensabel</b>Bisa dibatalkan oleh transaksi lain dengan efek berlawanan. Contoh: reservasi stok dibalik dengan lepas reservasi.</div>
+  <div class="ab a rdesc card" style="left:515px;top:522px;width:426px;height:230px;--d:7"><b>Transaksi pivot</b>Titik tanpa jalan kembali. Setelah berhasil, kompensasi tidak lagi relevan; langkah berikutnya wajib diselesaikan.</div>
+  <div class="ab a rdesc card" style="left:993px;top:522px;width:426px;height:230px;--d:8"><b>Transaksi yang bisa diulang</b>Datang setelah pivot dan bersifat idempoten, sehingga saga tetap mencapai status akhir walau ada gangguan sementara.</div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section class="slide" data-key="s10">
+  <div class="ab blob" style="left:-60px;top:560px;width:240px;height:240px;background:linear-gradient(90deg,#4b52f2,#0d0f2e);--p:10px"></div>
+  <div class="ab blob f2" style="left:1000px;top:520px;width:560px;height:560px;background:linear-gradient(200deg,#000 30%,#4b52f2);--p:-10px"></div>
+  <svg class="arw bob" style="left:1340px;top:668px" width="80" height="112" viewBox="0 0 100 100"><path d="M10 92 L82 20 M30 18 H86 V74"/></svg>
+  <div class="h a" style="left:45px;top:135px;font-size:36px;--d:0">Kompensasi bukan rollback: datanya sudah commit, jadi kita<br>menulis transaksi baru yang membalik efek bisnisnya</div>
+  <div class="tbl a t10" style="left:43px;top:235px;width:1356px;grid-template-columns:302px 452px 602px;grid-auto-rows:60px;--d:2">
+    <div class="hd">Langkah</div><div class="hd">Aksi (maju)</div><div class="hd">Kompensasi (mundur)</div>
+    <div class="r0">Pesanan</div><div class="r0">Simpan pesanan, status PENDING</div>
+  <div class="r0 cc">Ubah status menjadi CANCELED (tidak dihapus)</div>
+  <div class="r1">Pembayaran</div>
+  <div class="r1">Tagih via Payment Gateway</div>
+  <div class="r1 cc">Refund dana ke rekening pembeli</div>
+  <div class="r0">Stok</div>
+  <div class="r0">Reservasi unit di gudang</div>
+  <div class="r0 cc">Lepas reservasi unit stok kembali</div>
+  <div class="r1">Pengiriman</div>
+  <div class="r1">Jadwalkan kurir & resi</div>
+  <div class="r1 cc">Batalkan jadwal kirim / retry jika gagal</div>
+  </div>
+  <button class="btn b-cmp" style="left:1232px;top:545px">Putar mundur</button>
+  <div class="ab a card lift" style="left:30px;top:588px;width:648px;height:162px;background:#182158;padding:20px 30px;--d:5"><b style="color:#8fb0ff;font-size:22px">Kenapa tidak dihapus saja?</b><p style="font-size:21px;line-height:1.45;margin-top:12px">Pembeli, admin, dan audit perlu tahu bahwa pesanan pernah ada dan alasan batalnya.</p></div>
+  <div class="ab a card lift" style="left:752px;top:590px;width:648px;height:162px;background:#182158;padding:20px 30px;--d:6"><b style="color:#ff8080;font-size:22px">Kompensasi juga bisa gagal</b><p style="font-size:21px;line-height:1.45;margin-top:12px">Jika gagal, sistem bisa tetap tidak konsisten. Kompensasi harus bisa diulang dan dipantau.</p></div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section class="slide" data-key="s11">
+  <div class="ab blob f2" style="left:940px;top:80px;width:620px;height:740px;border-radius:0;background:linear-gradient(200deg,#000 25%,#1b1f60 60%,#4b52f2);--p:-10px"></div>
+  <div class="ab blob" style="left:-80px;top:450px;width:190px;height:220px;background:linear-gradient(90deg,#000,#1b236a);--p:8px"></div>
+  <div class="h a" style="left:66px;top:118px;font-size:37px;--d:0">Koreografi:<br>tiap layanan mendengar event lalu memutuskan<br>sendiri langkah berikutnya</div>
+  <svg class="ab a f" style="left:0;top:0;--d:3" width="1456" height="819">
+    <g stroke="#4fd8a6" stroke-width="2.5" marker-end="url(#mGreen)">
+      <line x1="186" y1="368" x2="186" y2="460"/><line x1="462" y1="463" x2="462" y2="372"/><line x1="559" y1="368" x2="559" y2="460"/>
+      <line x1="787" y1="463" x2="787" y2="372"/><line x1="884" y1="368" x2="884" y2="460"/><line x1="1193" y1="463" x2="1193" y2="372"/>
+    </g>
+  </svg>
+  <div class="ab a svb sv0" style="left:126px;top:268px;width:202px;height:100px;--d:2">Pesanan</div>
+  <div class="ab a svb sv1" style="left:457px;top:268px;width:202px;height:100px;--d:3">Stok</div>
+  <div class="ab a svb sv2" style="left:768px;top:268px;width:202px;height:100px;--d:4">Pembayaran</div>
+  <div class="ab a svb sv3" style="left:1079px;top:268px;width:202px;height:100px;--d:5">Pengiriman</div>
+  <div class="evl a f" style="left:80px;top:396px;--d:5">PesananDibuat</div>
+  <div class="evl a f" style="left:566px;top:396px;--d:6">StokDireservasi</div>
+  <div class="evl a f" style="left:890px;top:386px;--d:7">Pembayaran<br>Berhasil / Gagal</div>
+  <div class="ab a bus" style="left:85px;top:463px;width:1198px;height:88px;--d:4">Broker pesan / event bus</div>
+  <div class="ab a prow pr-ok" style="left:153px;top:593px;width:1197px;height:100px;color:#4fd8a6;--d:6"><b>Sukses</b><span>PesananDibuat → Stok reservasi → StokDireservasi → Pembayaran tagih → PembayaranBerhasil → Pengiriman → pesanan SELESAI</span></div>
+  <div class="ab a prow pr-ko" style="left:153px;top:710px;width:1197px;height:63px;color:#ff7b7b;--d:7"><b>Gagal</b><span>PembayaranGagal → Stok melepas reservasi (kompensasi) → StokDilepas → Pesanan DIBATALKAN</span></div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section class="slide" data-key="s12">
+  <div class="ab blob f2" style="left:1080px;top:-40px;width:520px;height:900px;border-radius:0;background:linear-gradient(200deg,#4b52f2 10%,#1b1f60 50%,#000 85%);--p:-10px"></div>
+  <div class="ab blob" style="left:-90px;top:120px;width:190px;height:230px;background:linear-gradient(90deg,#000,#1b236a);--p:8px"></div>
+  <svg class="arw bob" style="left:10px;top:770px" width="40" height="40" viewBox="0 0 100 100"><path d="M10 92 L82 20 M30 18 H86 V74" style="stroke-width:26"/></svg>
+  <div class="h a" style="left:66px;top:115px;font-size:37px;--d:0">Orkestrasi:<br>satu orkestrator memberi perintah, menyimpan status,<br>dan menjalankan kompensasi</div>
+  <svg class="ab a f" style="left:0;top:0;--d:3" width="1456" height="819">
+    <g stroke="#8fb0ff" stroke-width="2.5" marker-end="url(#mBlue)">
+      <line x1="406" y1="445" x2="240" y2="358"/><line x1="586" y1="445" x2="738" y2="358"/>
+      <line x1="406" y1="573" x2="240" y2="684"/><line x1="586" y1="573" x2="738" y2="682"/>
+    </g>
+  </svg>
+  <div class="ab a gp g0" style="left:132px;top:272px;width:209px;height:81px;--d:2">Pesanan</div>
+  <div class="ab a gp g1" style="left:636px;top:270px;width:209px;height:81px;--d:3">Stok</div>
+  <div class="ab a gp g2" style="left:132px;top:688px;width:209px;height:81px;--d:4">Pembayaran</div>
+  <div class="ab a gp g3" style="left:640px;top:690px;width:209px;height:81px;--d:5">Pengiriman</div>
+  <div class="ab a z orch" style="left:390px;top:442px;width:208px;height:134px;--d:2">Orkestrator<br>Saga Pesanan</div>
+  <div class="ab a f" style="left:93px;top:500px;font-style:italic;color:#8fb0ff;font-size:18px;--d:5">perintah ↔ balasan</div>
+  <div class="ab a" style="left:945px;top:280px;color:#9db4ff;font-weight:700;font-size:21px;--d:4">Status yang disimpan orkestrator</div>
+  <div class="stl">
+    <div class="ab a stb" style="left:950px;top:343px;width:377px;--d:5">MENUNGGU_STOK</div>
+    <div class="ab a stb" style="left:950px;top:433px;width:377px;--d:6">MENUNGGU_BAYAR</div>
+    <div class="ab a stb" style="left:950px;top:523px;width:377px;--d:7">MENUNGGU_KIRIM</div>
+    <div class="ab a stb" style="left:950px;top:613px;width:377px;--d:8">SELESAI</div>
+    <div class="ab a stb" style="left:952px;top:706px;width:378px;--d:9">MENGOMPENSASI → DIBATALKAN</div>
+  </div>
+</section>
+
+<!-- ============ 13 ============ -->
+<section class="slide" data-key="s13">
+  <div class="ab blob" style="left:-90px;top:-80px;width:250px;height:270px;background:linear-gradient(135deg,#4b52f2,#14163e);--p:10px"></div>
+  <div class="ab blob f2" style="left:1000px;top:40px;width:600px;height:420px;background:radial-gradient(circle at 70% 70%,#4b52f2,#1b1f60 50%,transparent 72%);--p:-10px"></div>
+  <svg class="arw bob" style="left:1318px;top:680px;rotate:90deg" width="113" height="113" viewBox="0 0 100 100"><path d="M10 92 L82 20 M30 18 H86 V74"/></svg>
+  <div class="h a" style="left:66px;top:104px;font-size:37px;--d:0">Koreografi cocok untuk alur sederhana;<br>orkestrasi untuk alur kompleks yang sering bertambah</div>
+  <div class="tbl a t13" style="left:122px;top:194px;width:1212px;grid-template-columns:367px 580px 265px;grid-auto-rows:84px;--d:2">
+    <div class="hd">Aspek</div><div class="hd">Koreografi</div><div class="hd">Orkestrasi</div>
+    <div class="r0">Pengendali</div><div class="r0">Tidak ada; layanan saling bereaksi pada event</div><div class="r0">Satu orkestrator mengatur alur</div>
+    <div class="r1">Cocok untuk</div><div class="r1">Alur sederhana, sedikit layanan</div><div class="r1">Alur kompleks atau sering ditambah layanan baru</div>
+    <div class="r0">Titik gagal tunggal</div><div class="r0">Tidak ada</div><div class="r0">Orkestrator (perlu dibuat andal)</div>
+    <div class="r1">Melacak alur</div><div class="r1">Sulit; alur tersebar di banyak layanan</div><div class="r1">Mudah; status ada di satu tempat</div>
+    <div class="r0">Risiko</div><div class="r0">Ketergantungan siklik, uji integrasi sulit</div><div class="r0">Logika koordinasi menambah kompleksitas desain</div>
+  </div>
+</section>
+
+<!-- ============ 14 ============ -->
+<section class="slide" data-key="seq" data-seq="ok">
+  <div class="ab blob f2" style="left:1260px;top:100px;width:380px;height:380px;background:linear-gradient(90deg,#1b1f60,#000);--p:-10px"></div>
+  <div class="ab blob" style="left:-80px;top:540px;width:260px;height:320px;background:linear-gradient(45deg,#4b52f2,#000 70%);--p:10px"></div>
+  <div class="h a" style="left:66px;top:113px;font-size:37px;--d:0">Happy path: aplikasi langsung mendapat 202, saga<br>berjalan di belakang sampai pesanan selesai</div>
+  <div class="seqroot"></div>
+  <div class="ab hint">Tekan → atau Spasi untuk menampilkan pesan berikutnya</div>
+</section>
+
+<!-- ============ 15 ============ -->
+<section class="slide" data-key="seq" data-seq="ko">
+  <div class="ab blob f2" style="left:1260px;top:100px;width:380px;height:380px;background:linear-gradient(90deg,#1b1f60,#000);--p:-10px"></div>
+  <div class="ab blob" style="left:-80px;top:540px;width:260px;height:320px;background:linear-gradient(45deg,#4b52f2,#000 70%);--p:10px"></div>
+  <div class="h a" style="left:66px;top:113px;font-size:37px;--d:0">Failure path: pembayaran ditolak, orkestrator<br>menjalankan kompensasi dengan urutan terbalik</div>
+  <div class="seqroot"></div>
+  <div class="ab hint">Tekan → atau Spasi untuk menampilkan pesan berikutnya</div>
+</section>
+
+<!-- ============ 16 ============ -->
+<section class="slide" data-key="s16">
+  <div class="ab blob" style="left:-330px;top:-330px;width:690px;height:730px;background:linear-gradient(135deg,#4b52f2 40%,#1b1f60 70%,#000 85%);--p:12px"></div>
+  <svg class="arw bob" style="left:1318px;top:680px;rotate:-90deg" width="113" height="113" viewBox="0 0 100 100"><path d="M10 92 L82 20 M30 18 H86 V74"/></svg>
+  <div class="h a" style="left:66px;top:113px;font-size:37px;--d:0">Tanpa isolasi antarlayanan, saga bisa memunculkan<br>anomali data yang perlu diantisipasi</div>
+  <div class="ab a" style="left:239px;top:216px;color:#ff8080;font-weight:700;font-size:24px;--d:1">Anomali</div>
+  <div class="ab a" style="left:976px;top:222px;color:#b8f27a;font-weight:700;font-size:23px;--d:1">Penangkal</div>
+  <div class="ab a anc card" data-k="0,1,4" style="left:238px;top:275px;width:675px;height:154px;--d:2"><b>Pembaruan hilang</b><span>Satu saga menimpa perubahan saga lain.</span></div>
+  <div class="ab a anc card" data-k="0,2" style="left:238px;top:448px;width:675px;height:154px;--d:3"><b>Bacaan kotor</b><span>Membaca data yang perubahannya belum selesai.</span></div>
+  <div class="ab a anc card" data-k="3,4,5" style="left:238px;top:621px;width:675px;height:154px;--d:4"><b>Bacaan fuzzy</b><span>Langkah berbeda membaca data yang sudah berubah di antaranya.</span></div>
+  <div class="ab a l gpl" style="left:960px;top:287px;width:218px;--d:4">Kunci semantik</div>
+  <div class="ab a l gpl" style="left:962px;top:371px;width:274px;--d:5">Pembaruan komutatif</div>
+  <div class="ab a l gpl" style="left:962px;top:458px;width:274px;--d:6">Pandangan pesimistis</div>
+  <div class="ab a l gpl" style="left:962px;top:542px;width:220px;--d:7">Baca ulang nilai</div>
+  <div class="ab a l gpl" style="left:962px;top:626px;width:220px;--d:8">File versi</div>
+  <div class="ab a l gpl" style="left:962px;top:710px;width:220px;--d:9">Berbasis risiko</div>
+</section>
+
+<!-- ============ 17 ============ -->
+<section class="slide" data-key="s17" data-nobrand="1">
+  <div class="ab blob" style="left:-110px;top:360px;width:220px;height:360px;background:linear-gradient(90deg,#000,#4b52f2);--p:8px"></div>
+  <div class="ab" style="left:1418px;top:220px;width:60px;height:380px;background:#252c7a;border-radius:30px"></div>
+  <svg class="arw bob" style="left:1356px;top:690px;rotate:-90deg" width="113" height="113" viewBox="0 0 100 100"><path d="M10 92 L82 20 M30 18 H86 V74"/></svg>
+  <div class="h a" style="left:50px;top:75px;font-size:37px;--d:0">Masalah dual-write:<br>menyimpan ke database dan mengirim event adalah dua<br>operasi yang bisa gagal terpisah</div>
+  <svg class="ab a f" style="left:0;top:0;--d:3" width="1456" height="819"><g stroke="#8fb0ff" stroke-width="2.5" marker-end="url(#mBlue)"><line x1="392" y1="250" x2="506" y2="241"/><line x1="392" y1="306" x2="470" y2="410"/></g></svg>
+  <div class="ab a nb n-svc" style="left:66px;top:207px;width:326px;height:130px;--d:2">Layanan<br>Pesanan</div>
+  <div class="ab a nb n-db" style="left:537px;top:211px;width:124px;height:84px;--d:3">DB</div>
+  <div class="ab a nb n-br" style="left:473px;top:370px;width:246px;height:98px;--d:4">Broker</div>
+  <div class="ab a f" style="left:393px;top:192px;color:#a9bfff;font-size:19px;--d:3">① simpan</div>
+  <div class="ab a f" style="left:312px;top:430px;color:#a9bfff;font-size:19px;--d:4">② kirim event</div>
+  <div class="bdg bd-db" style="left:560px;top:180px">&nbsp;</div>
+  <div class="bdg bd-br" style="left:560px;top:480px">&nbsp;</div>
+  <div class="bdg bd-x" style="left:410px;top:340px;background:#ff7b7b;color:#300">crash</div>
+  <div class="ab a card" style="left:66px;top:516px;width:653px;height:254px;background:#172060;padding:30px 34px;--d:5"><b style="color:#ffc95e;font-size:24px">Dua sistem, dua penulisan</b><p style="font-size:22px;line-height:1.45;margin-top:20px">Database dan broker tidak bisa dibungkus satu transaksi, jadi salah satunya bisa berhasil sendirian.</p></div>
+  <div class="ab a gcard card gA" style="left:782px;top:209px;width:626px;height:188px;--d:3"><b>Kasus A: DB berhasil, event gagal</b><span>Layanan crash setelah commit. Layanan Stok tidak pernah tahu; pesanan menggantung di MENUNGGU.</span></div>
+  <div class="ab a gcard card gB" style="left:782px;top:444px;width:626px;height:187px;--d:4"><b>Kasus B: DB rollback, event terkirim</b><span>Layanan Pembayaran menagih pesanan yang sebenarnya tidak pernah tersimpan.</span></div>
+</section>
+
+<!-- ============ 18 ============ -->
+<section class="slide" data-key="s18">
+  <div class="ab blob" style="left:-120px;top:-120px;width:330px;height:330px;background:linear-gradient(135deg,#4b52f2,#000 70%);--p:10px"></div>
+  <div class="ab blob f2" style="left:1215px;top:510px;width:520px;height:520px;background:linear-gradient(90deg,#000,#1b1f60 55%,#2a2f7a);--p:-10px"></div>
+  <div class="h a" style="left:66px;top:103px;font-size:37px;--d:0">Transactional outbox: simpan data dan event di<br>database yang sama, dalam satu transaksi lokal</div>
+  <svg class="ab a f" style="left:0;top:0;--d:4" width="1456" height="819"><g stroke="#8fb0ff" stroke-width="2.5" marker-end="url(#mBlue)"><line x1="319" y1="325" x2="377" y2="325"/><line x1="811" y1="325" x2="896" y2="325"/><line x1="1005" y1="370" x2="1005" y2="403"/><line x1="1110" y1="451" x2="1166" y2="410"/></g></svg>
+  <div class="ab a nb" style="left:66px;top:257px;width:253px;height:134px;--d:2">Layanan<br>Pesanan</div>
+  <div class="ab a dash" style="left:380px;top:228px;width:461px;height:284px;--d:3"></div>
+  <div class="ab a f" style="left:402px;top:236px;color:#44d7a8;font-style:italic;font-size:18px;--d:3">satu transaksi lokal</div>
+  <div class="ab a nb n-ord" style="left:408px;top:286px;width:188px;height:195px;--d:4">tabel<br>orders</div>
+  <div class="ab a nb n-out" style="left:625px;top:286px;width:186px;height:195px;--d:5"><span>tabel<br><span style="color:#ffc95e">outbox</span></span><div class="chip">sent_at: NULL</div></div>
+  <div class="ab a nb n-rel" style="left:899px;top:279px;width:210px;height:91px;background:#5a3b8e;--d:6">Relay</div>
+  <div class="ab a nb n-brk" style="left:899px;top:406px;width:210px;height:90px;background:#253a8e;--d:7">Broker</div>
+  <div class="ab a nb n-stk" style="left:1197px;top:348px;width:186px;height:84px;--d:8">Layanan<br>Stok, dll.</div>
+  <div class="stp a" style="left:136px;top:578px;--d:6"><i>1</i><span>Simpan pesanan dan event PesananDibuat dalam satu COMMIT.</span></div>
+  <div class="stp a" style="left:848px;top:578px;--d:7"><i>2</i><span>Relay membaca baris outbox yang belum terkirim, urut sesuai nomor.</span></div>
+  <div class="stp a" style="left:136px;top:693px;--d:8"><i>3</i><span>Relay mengirim ke broker, lalu menandai baris sebagai terkirim.</span></div>
+  <div class="stp a" style="left:848px;top:693px;--d:9"><i>4</i><span>Broker mengantar event ke layanan yang berlangganan.</span></div>
+</section>
+
+<!-- ============ 19 ============ -->
+<section class="slide">
+  <div class="ab blob f2" style="left:1010px;top:-140px;width:640px;height:420px;background:radial-gradient(ellipse at 70% 50%,#4b52f2,#1b1f60 50%,transparent 72%);--p:-10px"></div>
+  <div class="ab blob" style="left:90px;top:440px;width:250px;height:170px;background:linear-gradient(90deg,#3a3fbf,#4b52f2);--p:6px"></div>
+  <div class="h a" style="left:66px;top:103px;font-size:37px;--d:0">Tabel outbox cukup sederhana: siapa, event apa, isinya,<br>dan kapan terkirim</div>
+  <div class="ab a code mono" style="left:45px;top:201px;width:760px;height:313px;font-size:16px;padding:22px 20px;--d:2;--sp:.15s">
+<span class="tl" style="--d:0">CREATE TABLE outbox_messages (</span><span class="tl" style="--d:1">  id             BIGINT AUTO_INCREMENT PRIMARY KEY,</span><span class="tl" style="--d:2">  aggregate_type VARCHAR(50), <span class="c">-- Order, Payment</span></span><span class="tl" style="--d:3">  aggregate_id   VARCHAR(50), <span class="c">-- order_code</span></span><span class="tl" style="--d:4">  event_type     VARCHAR(50), <span class="c">-- OrderCreated</span></span><span class="tl" style="--d:5">  payload        JSON,        <span class="c">-- pesan event</span></span><span class="tl" style="--d:6">  status         VARCHAR(20) DEFAULT <span class="s">'PENDING'</span>,</span><span class="tl" style="--d:7">  processed_at   TIMESTAMP NULL <span class="c">-- NULL: belum</span></span><span class="tl" style="--d:8">);</span></div>
+  <div class="ab a code mono" style="left:45px;top:535px;width:760px;height:232px;font-size:16px;padding:18px 20px;--d:4;--sp:.15s">
+<span class="tl" style="--d:9">BEGIN;</span><span class="tl" style="--d:10">  INSERT INTO orders (order_code, total_amount, status)</span><span class="tl" style="--d:11">    VALUES (<span class="s">'ORD-123'</span>, 150000, <span class="s">'PENDING'</span>);</span><span class="tl" style="--d:12">  INSERT INTO outbox_messages</span><span class="tl" style="--d:13">    (aggregate_type, aggregate_id, event_type, payload)</span><span class="tl" style="--d:14">    VALUES (<span class="s">'Order'</span>, <span class="s">'ORD-123'</span>, <span class="s">'OrderCreated'</span>, <span class="s">'{"total":150000}'</span>);</span><span class="tl" style="--d:15">COMMIT; <span class="c">-- tersimpan berdua secara atomik dalam 1 transaksi</span></span></div>
+  <div class="ab a ncard card lift" style="left:828px;top:201px;width:580px;height:165px;padding:20px 24px;--d:3"><h4>id &amp; created_at</h4><p style="font-size:17.5px;line-height:1.4;margin-top:6px">Menjaga urutan antrean event (FIFO) sama persis dengan urutan mutasi data.</p></div>
+  <div class="ab a ncard card lift" style="left:828px;top:386px;width:580px;height:165px;padding:20px 24px;--d:4"><h4>status &amp; processed_at</h4><p style="font-size:17.5px;line-height:1.4;margin-top:6px">Relay mengambil baris status PENDING, lalu menandai PROCESSED saat diteruskan.</p></div>
+  <div class="ab a ncard card lift" style="left:828px;top:571px;width:580px;height:165px;padding:20px 24px;--d:5"><h4>payload &amp; aggregate</h4><p style="font-size:17.5px;line-height:1.4;margin-top:6px">Menyimpan data lengkap event agar consumer dapat langsung mengeksekusi langkah.</p></div>
+</section>
+
+<!-- ============ 20 ============ -->
+<section class="slide">
+  <div class="ab blob" style="left:-120px;top:40px;width:210px;height:220px;background:linear-gradient(90deg,#0d0f2e,#1b236a);--p:8px"></div>
+  <div class="ab blob f2" style="left:1080px;top:280px;width:540px;height:620px;background:linear-gradient(200deg,#000 20%,#1b1f60 55%,#4b52f2);--p:-10px"></div>
+  <svg class="arw bob" style="left:30px;top:732px" width="115" height="115" viewBox="0 0 100 100"><path d="M10 92 L82 20 M30 18 H86 V74"/></svg>
+  <div class="h a" style="left:0;right:0;top:92px;text-align:center;font-size:38px;--d:0">2 cara memindahkan event keluar:</div>
+  <div class="ab a big card lift" style="left:126px;top:167px;width:568px;height:580px;--d:2">
+    <h3 style="font:700 40px 'Archivo',sans-serif;letter-spacing:-1px">Tabel outbox + polling</h3>
+    <p style="font-weight:700">Relay membaca tabel outbox secara berkala, misalnya tiap beberapa detik, lalu mengirim ke antrean.</p>
+    <h5>Kelebihan</h5><ul style="font-weight:700"><li>Mudah dipahami dan dipasang di MySQL/PostgreSQL</li><li>Urutan terjaga lewat id dan stempel waktu</li></ul>
+    <h5>Kekurangan</h5><ul style="font-weight:700;margin-left:34px"><li>Ada jeda sesuai interval polling</li><li>Menambah beban baca ke database</li></ul>
+  </div>
+  <div class="ab a big card lift" style="left:797px;top:167px;width:577px;height:580px;--d:3">
+    <h3 class="thin" style="font-size:44px">Change Data Capture (CDC)</h3>
+    <p style="font-weight:500">Database sendiri menerbitkan setiap perubahan data ke sebuah stream; relay membaca stream itu.</p>
+    <h5 style="margin-top:36px">Kelebihan</h5><ul><li>Tidak perlu tabel tambahan</li><li>Perubahan tertangkap hampir seketika</li></ul>
+    <h5 style="margin-top:36px">Kekurangan</h5><ul><li>Bergantung pada fitur database (mis. DynamoDB Streams)</li><li>Lebih sulit disiapkan untuk proyek kecil</li></ul>
+  </div>
+</section>
+
+<!-- ============ 21 ============ -->
+<section class="slide">
+  <div class="ab blob f2" style="left:975px;top:330px;width:700px;height:620px;border-radius:0;background:linear-gradient(200deg,#000 15%,#1b1f60 50%,#4b52f2 95%);--p:-10px"></div>
+  <div class="ab" style="left:1235px;top:590px;width:620px;height:620px;border-radius:50%;background:#000"></div>
+  <div class="h a" style="left:208px;top:117px;font-size:38px;--d:0">Outbox menjamin event tidak hilang, tetapi<br>event bisa terkirim lebih dari sekali</div>
+  <div class="ab a z orb" style="left:82px;top:260px;--d:2"></div>
+  <div class="ab a z orb" style="left:838px;top:260px;--d:3"></div>
+  <div class="ab a z orb" style="left:82px;top:537px;--d:4"></div>
+  <div class="ab a z orb" style="left:838px;top:537px;--d:5"></div>
+  <div class="ab a pt" style="left:176px;top:262px;--d:2"><h3>Pesan Duplikat</h3><p>Relay bisa mengirim ulang. Consumer harus idempoten: catat id pesan yang sudah diproses dan abaikan yang sama.</p></div>
+  <div class="ab a pt" style="left:943px;top:262px;--d:3"><h3>Urutan Event</h3><p>Kirim event dalam urutan yang sama dengan urutan perubahan database. Gunakan nomor urut atau antrean FIFO.</p></div>
+  <div class="ab a pt" style="left:176px;top:539px;--d:4"><h3>Transaksi Rollback</h3><p>Jangan pernah mengirim event dari transaksi yang dibatalkan. Outbox otomatis mencegahnya.</p></div>
+  <div class="ab a pt" style="left:943px;top:539px;--d:5"><h3>Lintas layanan</h3><p>Outbox hanya menjaga satu layanan. Untuk proses lintas layanan, gabungkan dengan saga.</p></div>
+</section>
+
+<!-- ============ 22 ============ -->
+<section class="slide" data-key="s22">
+  <div class="ab blob f2" style="left:1090px;top:350px;width:520px;height:560px;background:linear-gradient(200deg,#000 20%,#4b52f2);--p:-10px"></div>
+  <div class="ab blob" style="left:-60px;top:600px;width:250px;height:250px;background:linear-gradient(90deg,#4b52f2,#14163e);--p:8px"></div>
+  <div class="h a" style="left:183px;top:135px;font-size:38px;--d:0">Saga mengatur langkah, outbox menjamin<br>pesan antarlangkah sampai</div>
+  <div class="ab a lcard card" style="left:82px;top:272px;width:364px;height:245px;--d:2"><h3>Layanan Pesanan</h3><p>Transaksi Lokal:</p><ul><li>cek pesanan sudah diproses</li><li>ubah data bisnis</li><li>tulis event ke outbox</li></ul></div>
+  <div class="ab a lcard card" style="left:553px;top:272px;width:364px;height:245px;--d:3"><h3>Layanan Stok</h3><p>Transaksi Lokal:</p><ul><li>cek pesanan sudah diproses</li><li>ubah data bisnis</li><li>tulis event ke outbox</li></ul></div>
+  <div class="ab a lcard card" style="left:1009px;top:272px;width:364px;height:245px;--d:4"><h3>Layanan Pembayaran</h3><p>Transaksi Lokal:</p><ul><li>cek pesanan sudah diproses</li><li>ubah data bisnis</li><li>tulis event ke outbox</li></ul></div>
+  <svg class="arw a l" style="left:464px;top:332px;--d:3" width="80" height="90" viewBox="0 0 100 100"><path d="M5 50 H85 M50 12 L88 50 L50 88" style="stroke-width:20"/></svg>
+  <svg class="arw a l" style="left:928px;top:350px;--d:4" width="80" height="90" viewBox="0 0 100 100"><path d="M5 50 H85 M50 12 L88 50 L50 88" style="stroke-width:20"/></svg>
+  <div class="ab a acard card lift" style="left:82px;top:547px;width:418px;height:245px;--d:5"><h3>Saga menjawab</h3><p>Langkah apa yang dijalankan berikutnya, dan apa yang dibatalkan bila gagal.</p></div>
+  <div class="ab a acard card lift" style="left:519px;top:547px;width:418px;height:245px;--d:6"><h3>Outbox menjawab</h3><p>Bagaimana memastikan event setiap langkah pasti terkirim walau layanan crash.</p></div>
+  <div class="ab a acard card lift" style="left:956px;top:547px;width:418px;height:245px;--d:7"><h3>Idempotensi menjawab</h3><p>Bagaimana tetap aman bila event yang sama datang dua kali.</p></div>
+</section>
+
+<!-- ============ 23 ============ -->
+<section class="slide" data-key="s23">
+  <div class="ab blob" style="left:-120px;top:-130px;width:300px;height:320px;background:linear-gradient(135deg,#4b52f2,#14163e 70%);--p:10px"></div>
+  <div class="ab blob f2" style="left:1060px;top:380px;width:620px;height:620px;background:linear-gradient(200deg,#000 25%,#4b52f2);--p:-10px"></div>
+  <div class="h a" style="left:66px;top:113px;font-size:37px;--d:0">Di aplikasi web/mobile, saga terlihat sebagai status<br>pesanan yang bergerak, bukan sebagai “berhasil” instan</div>
+  <div class="ab a order card" style="left:113px;top:238px;width:550px;height:507px;--d:2">
+    <b class="ab" style="left:22px;top:38px;font-size:21px">Pesanan #123</b>
+    <div class="vline" style="top:150px;height:42px"></div>
+    <div class="vline" style="top:250px;height:42px"></div>
+    <div class="vline" style="top:338px;height:28px"></div>
+    <div class="step a l" style="top:80px;--d:4"><span class="ic"><svg width="52" height="52" viewBox="0 0 40 40"><path d="M6 21 L16 31 L35 6" stroke="#000" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 21 L16 31 L35 6" stroke="#4b52f2" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Pesanan dibuat</span></div>
+    <div class="step a l" style="top:180px;--d:6"><span class="ic"><svg width="52" height="52" viewBox="0 0 40 40"><path d="M6 21 L16 31 L35 6" stroke="#000" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 21 L16 31 L35 6" stroke="#4b52f2" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="t-2">Stok dipesan</span></div>
+    <div class="step a l st3" style="top:276px;--d:8"><span class="ic i3"><span class="dots"><i></i><i></i><i></i></span></span><span class="t3x">Menunggu pembayaran</span></div>
+    <div class="step a l st4" style="top:362px;--d:10"><span class="ic i4"><span style="width:42px;height:42px;border-radius:50%;background:linear-gradient(90deg,#4b52f2,#2a2470)"></span></span><span class="t4x">Dikirim</span></div>
+    <div class="ab saldo a f" style="left:22px;top:428px;width:500px;--d:11">Saldo kurang? Status berubah menjadi “Dibatalkan, stok dikembalikan”.</div>
+  </div>
+  <div class="tbl a" style="left:754px;top:241px;width:660px;grid-template-columns:330px 330px;grid-template-rows:66px 80px 80px 80px;--d:3">
+    <div class="hd" style="justify-content:center">Endpoint</div><div class="hd" style="justify-content:center">Tujuan</div>
+    <div class="r0">POST /orders + Idempotency-Key</div><div class="r0">buat pesanan; dibalas 202 Accepted + Location</div>
+    <div class="r1">GET /orders/{id}</div><div class="r1">Baca status: MENUNGGU, SELESAI, DIBATALKAN + alasan</div>
+    <div class="r0">POST /orders/{id}/cancel</div><div class="r0">Pembeli membatalkan; memicu kompensasi bila masih bisa</div>
+  </div>
+  <div class="ab a npl card lift" style="left:728px;top:580px;width:685px;--d:5">Jangan tampilkan “Berhasil” sebelum saga selesai; tampilkan “Diproses”.</div>
+  <div class="ab a npl card lift" style="left:728px;top:659px;width:685px;--d:6">Ulangi request dengan Idempotency-Key yang sama agar tidak ada pesanan ganda.</div>
+  <div class="ab a npl card lift" style="left:728px;top:737px;width:685px;--d:7">Tampilkan alasan batal yang jelas, bukan kode error.</div>
+</section>
+
+<!-- ============ 24 ============ -->
+<section class="slide">
+  <div class="ab blob f2" style="left:1040px;top:-60px;width:520px;height:420px;background:radial-gradient(ellipse at 80% 40%,#4b52f2,#1b1f60 45%,transparent 70%);--p:-10px"></div>
+  <div class="h a" style="left:66px;top:103px;font-size:37px;--d:0">Di Laravel, outbox cukup satu DB::transaction, pemroses antrean,<br>dan CheckoutSagaOrchestrator</div>
+  <div class="ab a code mono" style="left:56px;top:238px;width:605px;height:512px;font-size:14.5px;padding:20px 22px;--d:2;--sp:.11s">
+<span class="tl c" style="--d:0">// OrderService@createOrder</span><span class="tl" style="--d:1">$order = DB::transaction(function () use ($data) {</span><span class="tl" style="--d:2">  $order = Order::create([</span><span class="tl" style="--d:3">    <span class="s">'order_code'</span>   =&gt; $data[<span class="s">'order_code'</span>],</span><span class="tl" style="--d:4">    <span class="s">'total_amount'</span> =&gt; $data[<span class="s">'total_amount'</span>],</span><span class="tl" style="--d:5">    <span class="s">'status'</span>       =&gt; <span class="s">'PENDING'</span>,</span><span class="tl" style="--d:6">  ]);</span><span class="tl" style="--d:7">  OutboxMessage::create([</span><span class="tl" style="--d:8">    <span class="s">'aggregate_type'</span> =&gt; <span class="s">'Order'</span>,</span><span class="tl" style="--d:9">    <span class="s">'aggregate_id'</span>   =&gt; $order-&gt;order_code,</span><span class="tl" style="--d:10">    <span class="s">'event_type'</span>     =&gt; <span class="s">'OrderCreated'</span>,</span><span class="tl" style="--d:11">    <span class="s">'payload'</span>        =&gt; $data,</span><span class="tl" style="--d:12">    <span class="s">'status'</span>         =&gt; <span class="s">'PENDING'</span>,</span><span class="tl" style="--d:13">  ]);</span><span class="tl" style="--d:14">  return $order;</span><span class="tl" style="--d:15">});</span><span class="tl" style="--d:16">return redirect()-&gt;route(<span class="s">'checkout.pay'</span>, $order-&gt;order_code);</span></div>
+  <div class="ab a code mono" style="left:685px;top:238px;width:715px;height:242px;font-size:14.5px;padding:18px 22px;--d:4;--sp:.11s">
+<span class="tl c" style="--d:18">// OutboxProcessor (php artisan outbox:process)</span><span class="tl" style="--d:19">OutboxMessage::where(<span class="s">'status'</span>, <span class="s">'PENDING'</span>)-&gt;orderBy(<span class="s">'id'</span>)</span><span class="tl" style="--d:20">  -&gt;limit(50)-&gt;get()-&gt;each(function ($msg) {</span><span class="tl" style="--d:21">    $msg-&gt;update([</span><span class="tl" style="--d:22">      <span class="s">'status'</span>       =&gt; <span class="s">'PROCESSED'</span>,</span><span class="tl" style="--d:23">      <span class="s">'processed_at'</span> =&gt; now()]);</span><span class="tl" style="--d:24">    $this-&gt;orchestrator-&gt;handleEvent($msg);</span><span class="tl" style="--d:25">  });</span></div>
+  <div class="ab a code mono" style="left:685px;top:504px;width:715px;height:246px;font-size:14px;padding:18px 22px;--d:6;--sp:.11s">
+<span class="tl c" style="--d:26">// CheckoutSagaOrchestrator@handleEvent</span><span class="tl" style="--d:27">switch ($msg-&gt;event_type) {</span><span class="tl" style="--d:28">  case <span class="s">'PaymentCompleted'</span>:</span><span class="tl" style="--d:29">    $this-&gt;executeInventoryStep($order, $payload); break;</span><span class="tl" style="--d:30">  case <span class="s">'StockReserved'</span>:</span><span class="tl" style="--d:31">    $this-&gt;executeShippingStep($order, $payload); break;</span><span class="tl" style="--d:32">  case <span class="s">'ShipmentScheduled'</span>:</span><span class="tl" style="--d:33">    $this-&gt;executeCompletionStep($order, $payload); break;</span><span class="tl" style="--d:34">}</span></div>
+</section>
+
+<!-- ============ 25 ============ -->
+<section class="slide" data-key="s25">
+  <div class="ab blob" style="left:-70px;top:580px;width:240px;height:240px;background:linear-gradient(90deg,#4b52f2,#14163e);--p:8px"></div>
+  <svg class="arw bob" style="left:35px;top:726px" width="115" height="115" viewBox="0 0 100 100"><path d="M10 92 L82 20 M30 18 H86 V74"/></svg>
+  <div class="h a" style="left:66px;top:103px;font-size:37px;--d:0">Demo: simulasi saga orkestrasi dan outbox pada<br>Aplikasi Shambat (Laravel)</div>
+  <div class="ab a z ncirc" style="left:67px;top:240px;background:#4fd8a6;--d:2">1</div>
+  <div class="ab a z ncirc" style="left:67px;top:368px;background:#ff7b7b;--d:3">2</div>
+  <div class="ab a z ncirc" style="left:67px;top:498px;background:#ffcf6b;--d:4">3</div>
+  <div class="ab a z ncirc" style="left:67px;top:628px;background:#8fb0ff;--d:5">4</div>
+  <div class="ab a term card" data-i="0" style="left:132px;top:206px;width:752px;height:107px;--d:2"><span class="cmd mono">python demo_saga_outbox.py</span><div class="out" style="color:#4fd8a6">PesananDibuat &gt; StokDireservasi &gt; PembayaranBerhasil &gt; PengirimanDibuat
+[OK] pesanan SELESAI | stok 10 -&gt; 8</div></div>
+  <div class="ab a term card" data-i="1" style="left:132px;top:337px;width:752px;height:107px;--d:3"><span class="cmd mono">python demo_saga_outbox.py --skenario bayar-gagal</span><div class="out" style="color:#ff9d9d">PembayaranGagal &gt; LepasReservasi &gt; BatalkanPesanan
+[KOMPENSASI] stok 8 -&gt; 10 | pesanan DIBATALKAN</div></div>
+  <div class="ab a term card" data-i="2" style="left:132px;top:466px;width:752px;height:107px;--d:4"><span class="cmd mono">python demo_saga_outbox.py --tanpa-outbox --crash</span><div class="out" style="color:#ffcf6b">COMMIT orders OK ... CRASH sebelum publish
+[HILANG] event tidak terkirim | pesanan MENUNGGU selamanya</div></div>
+  <div class="ab a term card" data-i="3" style="left:128px;top:594px;width:764px;height:107px;--d:5"><span class="cmd mono">python demo_saga_outbox.py --crash --duplikat</span><div class="out" style="color:#8fb0ff">relay restart: kirim ulang 1 event dari outbox
+[IDEMPOTEN] msg #1 sudah diproses, duplikat diabaikan</div></div>
+  <div class="ab a dsc" style="left:912px;top:249px;--d:3">Happy path: pesanan SELESAI, stok 10 → 8.</div>
+  <div class="ab a dsc" style="left:912px;top:360px;--d:4">Kompensasi: stok dikembalikan, pesanan<br>DIBATALKAN.</div>
+  <div class="ab a dsc" style="left:912px;top:492px;--d:5">Dual-write: event hilang, pesanan<br>menggantung.</div>
+  <div class="ab a dsc" style="left:912px;top:622px;--d:6">Outbox menyelamatkan event; duplikat<br>diabaikan.</div>
+  <div class="ab a f" style="left:912px;top:720px;font-size:13px;color:rgba(255,255,255,.45);--d:8">Klik tiap perintah untuk menjalankan simulasinya</div>
+</section>
+
+<!-- ============ 26 ============ -->
+<section class="slide" data-key="s26">
+  <div class="ab blob f2" style="left:1040px;top:80px;width:560px;height:520px;background:radial-gradient(ellipse at 70% 40%,#4b52f2,#1b1f60 45%,transparent 70%);--p:-10px"></div>
+  <div class="ab blob" style="left:-120px;top:600px;width:260px;height:260px;background:linear-gradient(90deg,#7a4f9e,#000);--p:10px"></div>
+  <div class="ab blob f2" style="left:100px;top:710px;width:110px;height:110px;background:linear-gradient(90deg,#d394f0,#000);--p:14px"></div>
+  <div class="h a" style="left:66px;top:113px;font-size:37px;--d:0">Skenario gagal: relay outbox mati 30 menit saat jam<br>ramai</div>
+  <div class="ab a sc card lift" style="left:99px;top:211px;width:616px;height:232px;--d:2"><h4 style="color:#ff8080">Apa yang gagal</h4><p>Proses relay berhenti (server restart, error koneksi ke broker). Event menumpuk di tabel outbox.</p></div>
+  <div class="ab a sc card lift" style="left:741px;top:211px;width:616px;height:232px;--d:3"><h4 style="color:#ffd36b">Dampak</h4><p>Pesanan tersimpan, tetapi stok tidak direservasi dan pembayaran tidak ditagih. Pembeli melihat “Diproses” terlalu lama.</p></div>
+  <div class="ab a sc card lift" style="left:99px;top:466px;width:616px;height:232px;--d:4"><h4 style="color:#8fb0ff">Cara mendeteksi</h4><p>Pantau jumlah baris sent_at IS NULL dan umur event tertua. Beri alarm jika ada event belum terkirim lebih dari 5 menit.</p></div>
+  <div class="ab a sc card lift" style="left:741px;top:466px;width:616px;height:232px;--d:5"><h4 style="color:#4fd8a6">Cara menangani</h4><p>Hidupkan ulang relay; backlog terkirim berurutan. Consumer idempoten mengabaikan duplikat. Saga yang melewati batas waktu dikompensasi.</p></div>
+  <div class="ab a f mono backlog" style="left:99px;top:722px;font-size:15px;color:#ffcf6b;--d:7">outbox backlog (status PENDING): <b class="bl-n">0</b></div>
+</section>
+
+<!-- ============ 27 ============ -->
+<section class="slide">
+  <div class="ab blob f2" style="left:885px;top:80px;width:620px;height:760px;border-radius:0;background:linear-gradient(200deg,#000 20%,#1b1f60 55%,#4b52f2);--p:-10px"></div>
+  <div class="ab" style="left:1185px;top:480px;width:640px;height:640px;border-radius:50%;background:#000"></div>
+  <div class="ab blob" style="left:-120px;top:600px;width:260px;height:260px;background:linear-gradient(90deg,#7a4f9e,#000);--p:10px"></div>
+  <svg class="arw bob" style="left:772px;top:695px" width="113" height="113" viewBox="0 0 100 100"><path d="M10 92 L82 20 M30 18 H86 V74"/></svg>
+  <div class="h a" style="left:66px;top:103px;font-size:38px;--d:0">Saga dan outbox membeli konsistensi lintas<br>layanan dengan harga kompleksitas</div>
+  <div class="ab a col4 card lift" style="left:70px;top:215px;width:295px;height:485px;padding:22px 24px;--d:2"><h4 style="color:#4fd8a6">Manfaat</h4><ul><li>Data konsisten tanpa mengunci banyak database</li><li>Layanan tetap longgar dan bisa diskalakan sendiri</li><li>Event tidak hilang walau layanan crash</li></ul></div>
+  <div class="ab a col4 card lift" style="left:410px;top:215px;width:295px;height:485px;padding:22px 24px;--d:3"><h4 style="color:#ff8080">Biaya &amp; kompleksitas</h4><ul><li>Harus menulis kompensasi untuk setiap langkah</li><li>Debugging dan pemantauan lebih sulit</li><li>Tabel outbox, relay, dan broker tambahan</li></ul></div>
+  <div class="ab a col4 card lift" style="left:750px;top:215px;width:295px;height:485px;padding:22px 24px;--d:4"><h4 style="color:#ffd36b">Keterbatasan</h4><ul><li>Konsistensi tercapai belakangan, bukan seketika</li><li>Kompensasi bisa gagal</li><li>Anomali data perlu ditangkal sendiri</li></ul></div>
+  <div class="ab a col4 card lift" style="left:1090px;top:215px;width:295px;height:485px;padding:22px 24px;--d:5"><h4 style="color:#8fb0ff">Alternatif</h4><ul><li>Satu database (modular monolith) bila belum perlu dipisah</li><li>Transaksi terdistribusi untuk lingkup kecil berisiko tinggi</li><li>Tidak cocok bila langkah saling terikat erat atau siklik</li></ul></div>
+</section>
+
+<!-- ============ 28 ============ -->
+<section class="slide" data-key="s28">
+  <div class="ab blob f2" style="left:950px;top:80px;width:620px;height:520px;background:radial-gradient(ellipse at 70% 40%,#4b52f2,#1b1f60 45%,transparent 70%);--p:-10px"></div>
+  <div class="ab blob" style="left:-120px;top:600px;width:260px;height:260px;background:linear-gradient(90deg,#7a4f9e,#000);--p:10px"></div>
+  <div class="h a" style="left:66px;top:103px;font-size:37px;--d:0">Benang merah P3 dan P10: API gateway menerima pesanan<br>dengan cepat, saga dan outbox menyelesaikannya</div>
+  <svg class="ab a f" style="left:0;top:0;--d:4" width="1456" height="819"><g stroke="#8fb0ff" stroke-width="2.5" marker-end="url(#mBlue)"><line x1="299" y1="287" x2="331" y2="286"/><line x1="572" y1="287" x2="603" y2="286"/><line x1="844" y1="287" x2="876" y2="286"/><line x1="1117" y1="287" x2="1149" y2="286"/></g></svg>
+  <div class="ab a fb f0" style="left:61px;top:225px;width:238px;height:120px;--d:2">Web / Mobile</div>
+  <div class="ab a fb f1" style="left:334px;top:225px;width:238px;height:120px;--d:3">API Gateway</div>
+  <div class="ab a fb pu f2b" style="left:606px;top:225px;width:238px;height:120px;font-size:19px;--d:4">Layanan Pesanan<br>+ outbox</div>
+  <div class="ab a fb f3" style="left:879px;top:225px;width:238px;height:120px;--d:5">Broker</div>
+  <div class="ab a fb f4" style="left:1152px;top:225px;width:238px;height:120px;--d:6">Stok · Bayar · Kirim</div>
+  <div class="ab a lbl" style="left:61px;top:366px;width:511px;height:52px;border:2px solid #8fb0ff;color:#8fb0ff;--d:6">Pertemuan 3: REST API &amp; API Gateway</div>
+  <div class="ab a lbl" style="left:606px;top:366px;width:783px;height:52px;border:2px solid #ffc95e;color:#ffc95e;--d:7">Pertemuan 10: Saga &amp; Transactional Outbox</div>
+  <div class="ab a sc card lift" style="left:61px;top:455px;width:429px;height:297px;--d:8"><h4 style="color:#8fb0ff">202 Accepted</h4><p>Kontrak P3 untuk operasi panjang menjadi pintu masuk saga.</p></div>
+  <div class="ab a sc card lift" style="left:514px;top:455px;width:429px;height:297px;--d:9"><h4 style="color:#8fb0ff">Idempotency-Key</h4><p>Mencegah pesanan ganda di depan, consumer idempoten di belakang.</p></div>
+  <div class="ab a sc card lift" style="left:966px;top:455px;width:429px;height:297px;--d:10"><h4 style="color:#8fb0ff">Gateway tetap ringan</h4><p>Gateway hanya meneruskan; logika saga ada di layanan, bukan di gateway.</p></div>
+</section>
+
+<!-- ============ 29 ============ -->
+<section class="slide">
+  <div class="ab blob f2" style="left:845px;top:80px;width:680px;height:760px;border-radius:0;background:linear-gradient(200deg,#000 20%,#1b1f60 55%,#4b52f2);--p:-10px"></div>
+  <div class="ab" style="left:1195px;top:450px;width:660px;height:660px;border-radius:50%;background:#000"></div>
+  <div class="ab blob" style="left:-120px;top:600px;width:260px;height:260px;background:linear-gradient(90deg,#7a4f9e,#000);--p:10px"></div>
+  <svg class="arw bob" style="left:1346px;top:710px;rotate:-90deg" width="78" height="78" viewBox="0 0 100 100"><path d="M10 92 L82 20 M30 18 H86 V74"/></svg>
+  <div class="h a" style="left:66px;top:108px;font-size:36px;--d:0">Tiga hal yang perlu diingat dari pertemuan ini</div>
+  <div class="ab a rem" style="left:101px;top:201px;width:1010px;height:123px;--d:2"><i>1</i><div><b>Satu proses, banyak transaksi lokal</b><span>Begitu data tersebar di beberapa layanan, konsistensi dicapai lewat urutan transaksi lokal dan tercapai pada akhirnya, bukan seketika.</span></div></div>
+  <div class="ab a rem" style="left:101px;top:359px;width:1010px;height:123px;--d:4"><i>2</i><div><b>Setiap langkah butuh jalan pulang</b><span>Saga membatalkan langkah yang sudah berhasil dengan kompensasi. Koreografi untuk alur sederhana, orkestrasi untuk alur kompleks.</span></div></div>
+  <div class="ab a rem" style="left:101px;top:517px;width:1010px;height:123px;--d:6"><i>3</i><div><b>Data dan event disimpan bersama</b><span>Outbox menyimpan perubahan dan event dalam satu transaksi. Relay mengirimkannya; consumer harus idempoten.</span></div></div>
+</section>
+
+<!-- ============ 30 ============ -->
+<section class="slide" data-key="s30">
+  <div class="ab blob" style="left:995px;top:-90px;width:200px;height:200px;background:linear-gradient(90deg,#f5a8f5,#000);--p:12px"></div>
+  <div class="ab blob f2" style="left:1128px;top:20px;width:90px;height:90px;background:linear-gradient(90deg,#f5a8f5,#000);--p:18px"></div>
+  <div class="ab blob f2" style="left:995px;top:260px;width:600px;height:600px;border-radius:0;background:linear-gradient(200deg,#000 20%,#1b1f60 55%,#4b52f2);--p:-10px"></div>
+  <div class="ab" style="left:1245px;top:520px;width:620px;height:620px;border-radius:50%;background:#000"></div>
+  <div class="ab blob" style="left:-120px;top:600px;width:260px;height:260px;background:linear-gradient(90deg,#7a4f9e,#000);--p:10px"></div>
+  <div class="h a" style="left:66px;top:113px;font-size:37px;--d:0">Kuis: lima pertanyaan singkat</div>
+  <div class="ab a score" style="left:720px;top:118px;--d:2">Skor: <span class="sc-n">0</span>/5</div>
+  <button class="btn b-reset" style="left:860px;top:116px">Ulangi kuis</button>
+  <div class="q a" data-ans="B" style="top:196px;--d:2"><i>1</i><div><b>Mengapa ACID tidak berlaku langsung lintas layanan?</b><span class="opt">A. HTTP lambat</span><span class="opt">B. Tiap layanan punya database sendiri</span><span class="opt">C. JSON tidak mendukung transaksi</span><span class="opt">D. Gateway menolak</span></div></div>
+  <div class="q a" data-ans="C" style="top:307px;--d:3"><i>2</i><div><b>(Kasus) Stok sudah direservasi, pembayaran gagal. Kompensasi yang benar?</b><span class="opt">A. Hapus semua tabel</span><span class="opt">B. Ulangi bayar tanpa batas</span><span class="opt">C. Lepas stok, lalu batalkan pesanan</span><span class="opt">D. Biarkan saja</span></div></div>
+  <div class="q a" data-ans="A" style="top:419px;--d:4"><i>3</i><div><b>Kelemahan utama orkestrasi dibanding koreografi?</b><span class="opt">A. Orkestrator bisa jadi titik gagal</span><span class="opt">B. Tidak bisa kompensasi</span><span class="opt">C. Tidak memakai event</span><span class="opt">D. Selalu lebih lambat</span></div></div>
+  <div class="q a" data-ans="D" style="top:530px;--d:5"><i>4</i><div><b>(Kasus) Pesanan tersimpan, layanan crash sebelum kirim event. Polanya?</b><span class="opt">A. Circuit breaker</span><span class="opt">B. Pagination</span><span class="opt">C. Load balancer</span><span class="opt">D. Transactional outbox</span></div></div>
+  <div class="q a" data-ans="B" style="top:641px;--d:6"><i>5</i><div><b>Mengapa consumer harus idempoten saat memakai outbox?</b><span class="opt">A. Agar lebih cepat</span><span class="opt">B. Event bisa terkirim lebih dari sekali</span><span class="opt">C. Agar tanpa database</span><span class="opt">D. Diwajibkan JSON</span></div></div>
+</section>
+
+<!-- ============ 31 ============ -->
+<section class="slide" data-brand="ind">
+  <div class="ab blob" style="left:1122px;top:506px;width:220px;height:220px;background:linear-gradient(90deg,#4b52f2,#000);--p:10px"></div>
+  <svg class="arw bob" style="left:1268px;top:524px" width="122" height="122" viewBox="0 0 100 100"><path d="M10 92 L82 20 M30 18 H86 V74"/></svg>
+  <div class="h a" style="left:66px;top:106px;font-size:36px;color:#4b52f2;--d:0">Referensi</div>
+  <div class="ref a l" style="top:207px;--d:2">[1] Microsoft Azure Architecture Center. Pola transaksi terdistribusi Saga.<a href="https://learn.microsoft.com/id-id/azure/architecture/patterns/saga" target="_blank" rel="noopener">https://learn.microsoft.com/id-id/azure/architecture/patterns/saga</a></div>
+  <div class="ref a l" style="top:300px;--d:3">[2] AWS Prescriptive Guidance. Pola kotak keluar transaksional (Transactional Outbox).<a href="https://docs.aws.amazon.com/id_id/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/id_id/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html</a></div>
+  <div class="ref a l" style="top:393px;--d:4">[3] AWS Prescriptive Guidance. Pola orkestrasi saga.<a href="https://docs.aws.amazon.com/id_id/prescriptive-guidance/latest/cloud-design-patterns/saga-orchestration.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/id_id/prescriptive-guidance/latest/cloud-design-patterns/saga-orchestration.html</a></div>
+  <div class="ref a l" style="top:486px;--d:5">[4] Microsoft Azure Architecture Center. Pola Konsumen Idempoten.<a href="https://learn.microsoft.com/id-id/azure/architecture/patterns/idempotent-consumer" target="_blank" rel="noopener">https://learn.microsoft.com/id-id/azure/architecture/patterns/idempotent-consumer</a></div>
+  <div class="ref a l" style="top:579px;--d:6">[5] aws-samples. transactional-outbox-pattern (GitHub).<a href="https://github.com/aws-samples/transactional-outbox-pattern" target="_blank" rel="noopener">https://github.com/aws-samples/transactional-outbox-pattern</a></div>
+</section>
+
+<!-- ============ 32 ============ -->
+<section class="slide" data-key="s1">
+  <div class="ab bgHero"></div>
+  <canvas class="ab net" width="1456" height="819"></canvas>
+  <div class="ab ty"><span class="ln" style="--d:0;display:inline-block;padding:0 10px"><span class="tk">Thank</span></span><span class="ln" style="--d:1;display:inline-block;padding:0 10px"><span class="yu">You</span></span></div>
+  <div class="ab a f" style="left:722px;top:704px;font-size:25px;--d:6">-</div>
+</section>
+
+</div><!-- /stage -->
+
+<div id="bar"></div>
+<div id="help">← → navigasi · O ikhtisar slide · F layar penuh · L demo live</div>
+<div id="ui">
+  <button id="bPrev" title="Sebelumnya (←)">‹</button>
+  <span class="cnt" id="cnt">1 / 32</span>
+  <button id="bNext" title="Berikutnya (→)">›</button>
+  <button id="bGrid" title="Ikhtisar (O)">Ikhtisar</button>
+  <button id="bFull" title="Layar penuh (F)">Layar penuh</button>
+</div>
+<div id="ov"><h2>Ikhtisar slide</h2><div class="grid"></div></div>
+
+<script>
+(() => {
+const W = 1456, H = 819;
+const stage = document.getElementById('stage');
+const slides = [...stage.querySelectorAll('.slide')];
+const $ = (s, el) => (el || document).querySelector(s);
+const $$ = (s, el) => [...(el || document).querySelectorAll(s)];
+let cur = -1;
+
+/* ---------- scale to fit ---------- */
+function fit() {
+  const s = Math.min(innerWidth / W, innerHeight / H);
+  stage.style.transform = `translate(-50%,-50%) scale(${s})`;
+}
+addEventListener('resize', fit); fit();
+
+/* ---------- chrome: brand + page pill ---------- */
+slides.forEach((sl, i) => {
+  const ind = sl.dataset.brand === 'ind' ? ' ind' : '';
+  if (!sl.dataset.nobrand) sl.insertAdjacentHTML('beforeend', `<div class="brand${ind}"><b>Sistem</b>Terdistribusi</div>`);
+  sl.insertAdjacentHTML('beforeend', `<div class="pill${ind}">Page ${String(i + 1).padStart(2, '0')}</div>`);
+});
+
+/* ---------- timers scoped to the active slide ---------- */
+let timers = [];
+const later = (f, t) => { const id = setTimeout(f, t); timers.push(id); return id; };
+const every = (f, t) => { const id = setInterval(f, t); timers.push(id); return id; };
+const wait = t => new Promise(r => later(r, t));
+const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
+
+/* travelling glowing dot */
+function shoot(sl, x1, y1, x2, y2, c = '#8fb0ff', dur = 800) {
+  const d = document.createElement('i');
+  d.className = 'dot'; d.style.left = x1 + 'px'; d.style.top = y1 + 'px'; d.style.setProperty('--c', c);
+  sl.appendChild(d);
+  const dx = x2 - x1, dy = y2 - y1;
+  d.animate([
+    { transform: 'translate(0,0) scale(.3)', opacity: 0 },
+    { transform: `translate(${dx * .12}px,${dy * .12}px) scale(1)`, opacity: 1, offset: .12 },
+    { transform: `translate(${dx}px,${dy}px) scale(1)`, opacity: 1, offset: .88 },
+    { transform: `translate(${dx}px,${dy}px) scale(1.8)`, opacity: 0 }
+  ], { duration: dur, easing: 'cubic-bezier(.45,0,.3,1)' }).onfinish = () => d.remove();
+}
+
+/* ---------- sequence diagrams (14, 15) ---------- */
+const X = [141, 373, 610, 846, 1081, 1318];
+const C = { b: '#8fb0ff', g: '#4fd8a6', r: '#ff7b7b', y: '#ffcf6b' };
+const SEQ = {
+  ok: { heads: 'g', msgs: [
+    [0,1,327,'1. POST /orders','b'],[1,0,354,'2. 202 Accepted {status: MENUNGGU}','g'],
+    [1,2,424,'3. PesananDibuat (via outbox)','b'],[2,3,471,'4. ReservasiStok','b'],
+    [3,2,519,'5. StokDireservasi','g'],[2,4,567,'6. TagihPembayaran','b'],
+    [4,2,616,'7. PembayaranBerhasil (pivot)','g'],[2,5,663,'8. BuatPengiriman','b'],
+    [5,2,712,'9. PengirimanDibuat','g'],[0,1,760,'10. GET /orders/123 → SELESAI','g'] ]},
+  ko: { heads: 'n', msgs: [
+    [0,1,322,'1. POST /orders','b'],[1,0,367,'2. 202 Accepted','g'],
+    [1,2,410,'3. PesananDibuat (via outbox)','b'],[2,3,455,'4. ReservasiStok','b'],
+    [3,2,498,'5. StokDireservasi','g'],[2,4,543,'6. TagihPembayaran','b'],
+    [4,2,587,'7. PembayaranGagal: saldo kurang','r'],[2,3,631,'8. Kompensasi: LepasReservasi','r'],
+    [3,2,675,'9. StokDilepas','r'],[2,1,718,'10. Kompensasi: BatalkanPesanan','r'],
+    [0,1,763,'11. GET /orders/123 → DIBATALKAN','y'] ]}
+};
+$$('[data-seq]').forEach(sl => {
+  const cfg = SEQ[sl.dataset.seq], root = $('.seqroot', sl);
+  const names = ['Aplikasi', 'Lay. Pesanan', 'Orkestrator', 'Stok', 'Pembayaran', 'Pengiriman'];
+  let html = `<svg class="ab" style="left:0;top:0" width="${W}" height="${H}"><g stroke="#6f84e0" stroke-width="1.6" stroke-dasharray="6 6">` +
+    X.map(x => `<line x1="${x}" y1="284" x2="${x}" y2="775"/>`).join('') + '</g></svg>';
+  names.forEach((n, i) => {
+    const cls = cfg.heads === 'g' || (cfg.heads === 'n' && i === 5) ? 'g' : 'n';
+    html += `<div class="sh ${cls} a z" style="left:${X[i]}px;--d:${i + 1}">${n}</div>`;
+  });
+  cfg.msgs.forEach(([a, b, y, label, col]) => {
+    const x1 = X[a], x2 = X[b], dir = x2 > x1 ? 1 : -1, len = Math.abs(x2 - x1), c = C[col];
+    const tip = `${x2},${y} ${x2 - dir * 11},${y - 6} ${x2 - dir * 11},${y + 6}`;
+    html += `<div class="msg frag" data-x1="${x1}" data-x2="${x2}" data-y="${y}" data-c="${c}">
+      <svg class="ab" style="left:0;top:0" width="${W}" height="${H}">
+        <line x1="${x1}" y1="${y}" x2="${x2 - dir * 4}" y2="${y}" stroke="${c}" stroke-width="2.4" style="--len:${len}"/>
+        <polygon points="${tip}" fill="${c}"/></svg>
+      <div class="lb" style="left:${Math.min(x1, x2) + 6}px;top:${y - 26}px;color:${c === C.b ? '#fff' : c}">${label}</div></div>`;
+  });
+  root.innerHTML = html;
+});
+
+function frags(sl) { return $$('.frag', sl); }
+function revealNext(sl) {
+  const f = frags(sl).find(e => e.classList.contains('pending'));
+  if (!f) return false;
+  f.classList.remove('pending');
+  shoot(sl, +f.dataset.x1, +f.dataset.y, +f.dataset.x2, +f.dataset.y, f.dataset.c, 700);
+  if (!frags(sl).some(e => e.classList.contains('pending'))) { const h = $('.hint', sl); if (h) h.style.opacity = 0; }
+  return true;
+}
+
+/* ---------- per-slide behaviours ---------- */
+const enter = {};
+let runId = 0;
+
+enter.s3 = sl => {
+  const cards = $$('.fc', sl), cx = [230, 566, 864, 1187];
+  const run = () => {
+    cards.forEach(c => c.classList.remove('lit', 'fail'));
+    cards.forEach((c, i) => later(() => {
+      if (i === 3) c.classList.add('fail'); else c.classList.add('lit');
+      if (i < 3) later(() => shoot(sl, cx[i], 377, cx[i + 1], 377, i === 2 ? '#ff7b7b' : '#f5a8f5', 650), 250);
+    }, 1100 + i * 900));
+  };
+  run(); every(run, 7000);
+};
+
+enter.s5 = sl => {
+  $$('.tilt', sl).forEach(card => {
+    card.onmousemove = e => {
+      const r = card.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
+      card.style.transform = `perspective(900px) rotateY(${x * 14}deg) rotateX(${-y * 14}deg) translateY(-6px)`;
+      card.style.boxShadow = `${-x * 30}px ${20 - y * 20}px 40px -14px rgba(0,0,0,.6)`;
+    };
+    card.onmouseleave = () => { card.style.transform = ''; card.style.boxShadow = ''; };
+  });
+};
+
+enter.s6 = sl => {
+  const lines = $$('.codew span', sl); let i = -1;
+  every(() => {
+    lines.forEach(l => l.classList.remove('hl', 'ok'));
+    i = (i + 1) % (lines.length + 2);
+    if (i < lines.length) lines[i].classList.add(i === lines.length - 1 ? 'ok' : 'hl');
+  }, 650);
+};
+
+enter.s7 = sl => {
+  const co = $('.co', sl), pp = $$('.pp', sl), tags = $$('.tag', sl), st = $('.st2', sl);
+  const cx = 392, cy = 348, px = [154, 391, 628], py = 504;
+  const run = async (abort) => {
+    const id = ++runId;
+    pp.forEach(p => p.classList.remove('lock', 'good', 'bad')); tags.forEach(t => t.classList.remove('show'));
+    st.textContent = 'Fase 1: siap commit?'; st.classList.add('show'); st.style.color = '#ffcf6b';
+    px.forEach(x => shoot(sl, cx, cy, x, py, '#ffcf6b', 800));
+    await wait(850); if (id !== runId) return;
+    pp.forEach(p => p.classList.add('lock')); tags.forEach(t => { t.textContent = 'TERKUNCI'; t.style.color = '#ffcf6b'; t.classList.add('show'); });
+    await wait(900); if (id !== runId) return;
+    px.forEach((x, i) => {
+      const no = abort && i === 2;
+      shoot(sl, x, py, cx, cy, no ? '#ff7b7b' : '#4fd8a6', 800);
+      tags[i].textContent = no ? 'TIDAK SIAP' : 'SIAP'; tags[i].style.color = no ? '#ff7b7b' : '#4fd8a6';
+    });
+    await wait(1000); if (id !== runId) return;
+    st.textContent = abort ? 'Fase 2: ABORT' : 'Fase 2: COMMIT'; st.style.color = abort ? '#ff7b7b' : '#4fd8a6';
+    px.forEach(x => shoot(sl, cx, cy, x, py, abort ? '#ff7b7b' : '#4fd8a6', 800));
+    await wait(850); if (id !== runId) return;
+    pp.forEach((p, i) => { p.classList.remove('lock'); p.classList.add(abort ? 'bad' : 'good'); tags[i].textContent = abort ? 'ROLLBACK' : 'COMMIT'; });
+  };
+  $('.b-ok', sl).onclick = () => run(false);
+  $('.b-ab', sl).onclick = () => run(true);
+  later(() => run(false), 1500);
+};
+
+enter.s8 = sl => {
+  const t = [$('.t1', sl), $('.t2', sl), $('.t3', sl)], c1 = $('.c1', sl), c2 = $('.c2', sl), r1 = $('.r1', sl), r2 = $('.r2', sl), why = $('.why8', sl);
+  const run = async () => {
+    const id = ++runId;
+    sl.classList.add('run');
+    [...t, c1, c2, r1, r2].forEach(e => e.classList.remove('on', 'fail', 'cur')); why.classList.remove('show');
+    for (let i = 0; i < 3; i++) {
+      await wait(i ? 750 : 500); if (id !== runId) return;
+      t.forEach(e => e.classList.remove('cur')); t[i].classList.add('cur');
+      if (i) shoot(sl, i === 1 ? 273 : 513, 331, i === 1 ? 322 : 562, 332, '#b9f56a', 500);
+    }
+    await wait(800); if (id !== runId) return;
+    t[2].classList.remove('cur'); t[2].classList.add('fail'); why.classList.add('show');
+    await wait(800); if (id !== runId) return;
+    r1.classList.add('on'); shoot(sl, 604, 356, 561, 440, '#ff7b7b', 700);
+    await wait(650); c2.classList.add('on');
+    await wait(650); if (id !== runId) return;
+    r2.classList.add('on'); shoot(sl, 337, 449, 306, 449, '#ff7b7b', 500);
+    await wait(450); c1.classList.add('on');
+    await wait(1200); if (id !== runId) return;
+    sl.classList.remove('run'); why.classList.remove('show');
+  };
+  $('.b-play', sl).onclick = run;
+  later(run, 1300);
+};
+
+enter.s9 = sl => {
+  const roles = $$('.role', sl), descs = $$('.rdesc', sl);
+  roles.forEach(r => {
+    r.onmouseenter = () => { sl.classList.add('dim'); r.classList.add('hi'); descs[+r.dataset.m].classList.add('hi'); };
+    r.onmouseleave = () => { sl.classList.remove('dim'); roles.concat(descs).forEach(e => e.classList.remove('hi')); };
+  });
+};
+
+enter.s10 = sl => {
+  const cells = $$('.t10 .cc', sl);
+  $$('.t10 > div:not(.hd)', sl).forEach((cell, i) => {
+    const row = Math.floor(i / 3);
+    cell.onmouseenter = () => $$('.t10 > div:not(.hd)', sl).slice(row * 3, row * 3 + 3).forEach(c => c.classList.add('row-hi'));
+    cell.onmouseleave = () => $$('.row-hi', sl).forEach(c => c.classList.remove('row-hi'));
+  });
+  $('.b-cmp', sl).onclick = () => {
+    clearTimers();
+    cells.forEach(c => c.classList.remove('cmp-hi'));
+    [3, 2, 1, 0].forEach((r, k) => later(() => { cells.forEach(c => c.classList.remove('cmp-hi')); cells[r].classList.add('cmp-hi'); }, k * 700));
+    later(() => cells.forEach(c => c.classList.remove('cmp-hi')), 3000);
+  };
+};
+
+enter.s11 = sl => {
+  let mode = 'ok';
+  const sv = [0, 1, 2, 3].map(i => $('.sv' + i, sl)), ok = $('.pr-ok', sl), ko = $('.pr-ko', sl);
+  const glow = (i, c) => { sv.forEach(s => s.classList.remove('glow')); if (i >= 0) { sv[i].style.setProperty('--gc', c); sv[i].classList.add('glow'); } };
+  const seqOk = [[186,368,186,463,0],[186,507,462,507],[462,463,462,368,1],[559,368,559,463,1],[559,507,787,507],[787,463,787,368,2],[884,368,884,463,2],[884,507,1193,507],[1193,463,1193,368,3]];
+  const seqKo = [[884,368,884,463,2],[884,507,462,507],[462,463,462,368,1],[559,368,559,463,1],[559,507,186,507],[186,463,186,368,0]];
+  const loop = async () => {
+    const id = ++runId;
+    while (id === runId) {
+      const seq = mode === 'ok' ? seqOk : seqKo, col = mode === 'ok' ? '#4fd8a6' : '#ff7b7b';
+      ok.classList.toggle('act', mode === 'ok'); ko.classList.toggle('act', mode === 'ko');
+      for (const [a, b, c, d, g] of seq) {
+        if (id !== runId) return;
+        shoot(sl, a, b, c, d, col, 560);
+        if (g !== undefined) glow(g, col);
+        await wait(580);
+      }
+      await wait(900); glow(-1);
+      if (id !== runId) return;
+      mode = mode === 'ok' ? 'ko' : 'ok';
+    }
+  };
+  ok.onclick = () => { mode = 'ok'; clearTimers(); glow(-1); loop(); };
+  ko.onclick = () => { mode = 'ko'; clearTimers(); glow(-1); loop(); };
+  later(loop, 1400);
+};
+
+enter.s12 = sl => {
+  const bars = $$('.stb', sl), list = $('.stl', sl), g = [0, 1, 2, 3].map(i => $('.g' + i, sl));
+  const O = [494, 509], P = [[236, 312], [740, 310], [236, 728], [744, 730]];
+  const plan = [[1], [2], [3], [0], [1, 0]];
+  let k = -1;
+  later(() => {
+    list.classList.add('cycling');
+    const tick = () => {
+      k = (k + 1) % bars.length;
+      bars.forEach(b => b.classList.remove('cur')); bars[k].classList.add('cur');
+      const red = k === 4;
+      plan[k].forEach((t, j) => later(() => {
+        shoot(sl, O[0], O[1], P[t][0], P[t][1], red ? '#ff7b7b' : '#8fb0ff', 650);
+        later(() => { g[t].classList.add('glow'); shoot(sl, P[t][0], P[t][1], O[0], O[1], red ? '#ff7b7b' : '#4fd8a6', 650); }, 650);
+        later(() => g[t].classList.remove('glow'), 1300);
+      }, j * 1300));
+    };
+    tick(); every(tick, 2900);
+  }, 1500);
+};
+
+enter.s13 = sl => {
+  const cells = $$('.t13 > div', sl);
+  cells.forEach((c, i) => {
+    const col = i % 3;
+    c.onmouseenter = () => { if (col) cells.forEach((d, j) => { if (j % 3 === col && j > 2) d.classList.add('row-hi'); }); };
+    c.onmouseleave = () => cells.forEach(d => d.classList.remove('row-hi'));
+  });
+};
+
+enter.seq = (sl, back) => {
+  const h = $('.hint', sl);
+  if (back) { frags(sl).forEach(f => f.classList.remove('pending')); h.style.opacity = 0; return; }
+  frags(sl).forEach(f => f.classList.add('pending')); h.style.opacity = 1;
+  later(() => revealNext(sl), 1300);
+};
+
+enter.s16 = sl => {
+  const pills = $$('.gpl', sl), an = $$('.anc', sl);
+  an.forEach(a => {
+    a.onmouseenter = () => { sl.classList.add('mapping'); a.classList.add('hi'); a.dataset.k.split(',').forEach(k => pills[+k].classList.add('hi')); };
+    a.onmouseleave = () => { sl.classList.remove('mapping'); an.concat(pills).forEach(e => e.classList.remove('hi')); };
+  });
+};
+
+enter.s17 = sl => {
+  const db = $('.n-db', sl), br = $('.n-br', sl), sv = $('.n-svc', sl), A = $('.gA', sl), B = $('.gB', sl);
+  const bdb = $('.bd-db', sl), bbr = $('.bd-br', sl), bx = $('.bd-x', sl);
+  const badge = (el, txt, ok) => { el.textContent = txt; el.style.background = ok ? '#4fd8a6' : '#ff7b7b'; el.style.color = ok ? '#06261b' : '#300'; el.classList.add('show'); };
+  const reset = () => { [db, br, sv].forEach(e => e.classList.remove('ok', 'ko')); [bdb, bbr, bx].forEach(e => e.classList.remove('show')); A.classList.remove('act'); B.classList.remove('act'); };
+  const caseA = async () => {
+    const id = ++runId; reset(); A.classList.add('act');
+    shoot(sl, 392, 250, 599, 252, '#4fd8a6', 800); await wait(800); if (id !== runId) return;
+    db.classList.add('ok'); badge(bdb, 'COMMIT', true);
+    await wait(500); sv.classList.add('ko'); bx.classList.add('show');
+    shoot(sl, 392, 306, 430, 357, '#ff7b7b', 450); await wait(500); if (id !== runId) return;
+    br.classList.add('ko'); badge(bbr, 'event tidak pernah sampai', false);
+  };
+  const caseB = async () => {
+    const id = ++runId; reset(); B.classList.add('act');
+    shoot(sl, 392, 250, 599, 252, '#ff7b7b', 800); await wait(800); if (id !== runId) return;
+    db.classList.add('ko'); badge(bdb, 'ROLLBACK', false);
+    shoot(sl, 392, 306, 596, 419, '#4fd8a6', 800); await wait(800); if (id !== runId) return;
+    br.classList.add('ok'); badge(bbr, 'event terkirim', true);
+  };
+  A.onclick = caseA; B.onclick = caseB;
+  later(async () => { await caseA(); later(caseB, 2600); }, 1400);
+};
+
+enter.s18 = sl => {
+  const steps = $$('.stp', sl), dash = $('.dash', sl), chip = $('.chip', sl);
+  const el = n => $('.n-' + n, sl);
+  const glow = (e, on) => e.classList.toggle('ok', on);
+  later(() => {
+    sl.classList.add('looping');
+    const cycle = async () => {
+      const id = ++runId;
+      while (id === runId) {
+        steps.forEach(s => s.classList.remove('cur')); chip.textContent = 'sent_at: NULL'; chip.classList.remove('sent');
+        steps[0].classList.add('cur'); dash.classList.add('glow');
+        shoot(sl, 319, 325, 502, 383, '#44d7a8', 800); shoot(sl, 319, 325, 718, 383, '#44d7a8', 950);
+        await wait(1500); dash.classList.remove('glow'); if (id !== runId) return;
+        steps[0].classList.remove('cur'); steps[1].classList.add('cur');
+        shoot(sl, 790, 360, 1004, 324, '#f5a8f5', 800); await wait(650); glow(el('rel'), true);
+        await wait(900); if (id !== runId) return;
+        steps[1].classList.remove('cur'); steps[2].classList.add('cur');
+        shoot(sl, 1004, 330, 1004, 451, '#8fb0ff', 650); await wait(600);
+        glow(el('rel'), false); glow(el('brk'), true); chip.textContent = 'sent_at: ' + new Date().toLocaleTimeString('id-ID'); chip.classList.add('sent');
+        await wait(900); if (id !== runId) return;
+        steps[2].classList.remove('cur'); steps[3].classList.add('cur');
+        shoot(sl, 1060, 451, 1290, 390, '#4fd8a6', 800); await wait(700);
+        glow(el('brk'), false); glow(el('stk'), true);
+        await wait(1300); glow(el('stk'), false);
+      }
+    };
+    cycle();
+  }, 1600);
+};
+
+enter.s22 = sl => {
+  const run = () => { shoot(sl, 446, 395, 553, 395, '#f5a8f5', 800); later(() => shoot(sl, 917, 395, 1009, 395, '#f5a8f5', 800), 900); };
+  later(run, 1400); every(run, 3200);
+};
+
+enter.s23 = sl => {
+  const s3 = $('.st3', sl), s4 = $('.st4', sl), t3 = $('.t3x', sl), t4 = $('.t4x', sl), i3 = $('.i3', sl), i4 = $('.i4', sl), t2 = $('.t-2', sl), sal = $('.saldo', sl);
+  const orig = [i3.innerHTML, i4.innerHTML];
+  const xIcon = '<svg width="44" height="44" viewBox="0 0 40 40"><path d="M9 9 L31 31 M31 9 L9 31" stroke="#ff7b7b" stroke-width="6" stroke-linecap="round"/></svg>';
+  let canceled = false;
+  const set = c => {
+    canceled = c;
+    s3.classList.toggle('red', c); s4.classList.toggle('red', c);
+    t3.textContent = c ? 'Pembayaran ditolak (saldo kurang)' : 'Menunggu pembayaran';
+    t4.textContent = c ? 'Dibatalkan, stok dikembalikan' : 'Dikirim';
+    t2.textContent = c ? 'Stok dipesan, lalu dilepas' : 'Stok dipesan';
+    i3.innerHTML = c ? xIcon : orig[0]; i4.innerHTML = c ? xIcon : orig[1];
+    sal.textContent = c ? 'Klik untuk kembali ke alur normal.' : 'Saldo kurang? Status berubah menjadi “Dibatalkan, stok dikembalikan”.';
+  };
+  set(false);
+  sal.onclick = () => set(!canceled);
+};
+
+enter.s25 = sl => {
+  const terms = $$('.term', sl), dsc = $$('.dsc', sl);
+  terms.forEach((t, i) => t.onclick = () => {
+    terms.forEach(x => x.classList.remove('run')); dsc.forEach(d => d.classList.remove('hi'));
+    void t.offsetWidth; t.classList.add('run'); later(() => dsc[i].classList.add('hi'), 1000);
+  });
+  terms.forEach(x => x.classList.remove('run')); dsc.forEach(d => d.classList.remove('hi'));
+};
+
+enter.s26 = sl => {
+  const n = $('.bl-n', sl); let v = 0;
+  later(() => every(() => {
+    v += Math.floor(Math.random() * 37) + 12;
+    n.textContent = v.toLocaleString('id-ID') + (v > 600 ? '  ALARM: event tertua > 5 menit' : '');
+    n.style.color = v > 600 ? '#ff7b7b' : '#ffcf6b';
+    if (v > 1400) v = 0;
+  }, 160), 1500);
+};
+
+enter.s28 = sl => {
+  const f = ['.f0', '.f1', '.f2b', '.f3', '.f4'].map(s => $(s, sl)), cx = [180, 453, 725, 998, 1271];
+  const run = async () => {
+    const id = ++runId;
+    while (id === runId) {
+      for (let i = 0; i < 5; i++) {
+        f.forEach(e => e.classList.remove('glow')); f[i].classList.add('glow');
+        if (i < 4) shoot(sl, cx[i] + 100, 286, cx[i + 1] - 100, 286, i < 1 ? '#8fb0ff' : '#ffc95e', 500);
+        await wait(650); if (id !== runId) return;
+      }
+      await wait(700); f.forEach(e => e.classList.remove('glow'));
+      await wait(600);
+    }
+  };
+  later(run, 1500);
+};
+
+/* quiz (bound once) */
+(() => {
+  const sl = $('[data-key="s30"]'); if (!sl) return;
+  const qs = $$('.q', sl), sc = $('.sc-n', sl);
+  const score = () => sc.textContent = qs.filter(q => q.classList.contains('done')).length;
+  qs.forEach(q => $$('.opt', q).forEach(o => o.onclick = () => {
+    if (q.classList.contains('answered')) return;
+    const letter = o.textContent.trim()[0], ans = q.dataset.ans;
+    q.classList.add('answered');
+    $$('.opt', q).forEach(x => { if (x.textContent.trim()[0] === ans) x.classList.add('right'); });
+    if (letter === ans) q.classList.add('done'); else { o.classList.add('wrong'); q.classList.add('miss'); }
+    score();
+  }));
+  $('.b-reset', sl).onclick = () => { qs.forEach(q => { q.classList.remove('answered', 'done', 'miss'); $$('.opt', q).forEach(o => o.classList.remove('right', 'wrong')); }); score(); };
+})();
+
+/* ---------- navigation ---------- */
+const bar = $('#bar'), cnt = $('#cnt');
+function go(n, back) {
+  n = Math.max(0, Math.min(slides.length - 1, n));
+  if (n === cur) return;
+  if (back === undefined) back = n < cur;
+  clearTimers(); runId++;
+  if (cur >= 0) { slides[cur].classList.remove('active', 'run', 'looping', 'mapping', 'dim'); $$('.dot', slides[cur]).forEach(d => d.remove()); }
+  cur = n;
+  const sl = slides[cur];
+  sl.classList.add('active');
+  const k = sl.dataset.key;
+  if (enter[k]) enter[k](sl, back);
+  bar.style.width = ((cur + 1) / slides.length * 100) + '%';
+  cnt.textContent = `${cur + 1} / ${slides.length}`;
+  history.replaceState(null, '', '#' + (cur + 1));
+}
+function next() { const sl = slides[cur]; if (sl.dataset.key === 'seq' && revealNext(sl)) return; go(cur + 1, false); }
+function prev() { go(cur - 1, true); }
+
+addEventListener('keydown', e => {
+  if (ov.classList.contains('open')) { if (e.key === 'Escape' || e.key.toLowerCase() === 'o') toggleOv(); return; }
+  const k = e.key;
+  if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter'].includes(k)) { e.preventDefault(); next(); }
+  else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(k)) { e.preventDefault(); prev(); }
+  else if (k === 'Home') go(0, false);
+  else if (k === 'End') go(slides.length - 1, true);
+  else if (k.toLowerCase() === 'f') toggleFull();
+  else if (k.toLowerCase() === 'o') toggleOv();
+});
+$('#bNext').onclick = next; $('#bPrev').onclick = prev;
+$('#bFull').onclick = () => toggleFull();
+$('#bGrid').onclick = () => toggleOv();
+function toggleFull() { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); }
+
+/* touch swipe */
+let tx = null;
+addEventListener('touchstart', e => tx = e.touches[0].clientX, { passive: true });
+addEventListener('touchend', e => { if (tx === null) return; const d = e.changedTouches[0].clientX - tx; if (Math.abs(d) > 50) d < 0 ? next() : prev(); tx = null; });
+
+/* auto-hide controls + parallax */
+let hideT;
+addEventListener('mousemove', e => {
+  document.body.classList.add('ui'); clearTimeout(hideT); hideT = setTimeout(() => document.body.classList.remove('ui'), 2200);
+  stage.style.setProperty('--mx', (e.clientX / innerWidth - .5) * 2);
+  stage.style.setProperty('--my', (e.clientY / innerHeight - .5) * 2);
+  const r = stage.getBoundingClientRect();
+  mouse.x = (e.clientX - r.left) / r.width * W; mouse.y = (e.clientY - r.top) / r.height * H;
+});
+setTimeout(() => $('#help').classList.add('hide'), 4500);
+
+/* ---------- overview ---------- */
+const ov = $('#ov'), grid = $('.grid', ov);
+function toggleOv() {
+  if (ov.classList.contains('open')) { ov.classList.remove('open'); return; }
+  grid.innerHTML = '';
+  slides.forEach((sl, i) => {
+    const th = document.createElement('div'); th.className = 'th' + (i === cur ? ' cur' : '');
+    const c = sl.cloneNode(true);
+    c.classList.remove('active', 'run', 'looping', 'mapping', 'dim');
+    $$('.pending', c).forEach(e => e.classList.remove('pending'));
+    $$('.dot', c).forEach(e => e.remove());
+    th.appendChild(c);
+    th.insertAdjacentHTML('beforeend', `<span class="no">${i + 1}</span>`);
+    th.onclick = () => { ov.classList.remove('open'); go(i, false); };
+    grid.appendChild(th);
+  });
+  ov.classList.add('open');
+}
+
+/* ---------- network canvas (slide 1 & 32) ---------- */
+const mouse = { x: -999, y: -999 };
+const nets = $$('canvas.net').map(cv => {
+  const ctx = cv.getContext('2d');
+  const pts = Array.from({ length: 52 }, () => ({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * .35, vy: (Math.random() - .5) * .35 }));
+  const pk = [];
+  return { cv, draw() {
+    ctx.clearRect(0, 0, W, H);
+    for (const p of pts) {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0 || p.x > W) p.vx *= -1; if (p.y < 0 || p.y > H) p.vy *= -1;
+      const dx = mouse.x - p.x, dy = mouse.y - p.y, d = Math.hypot(dx, dy);
+      if (d < 180) { p.x -= dx / d * .6; p.y -= dy / d * .6; }
+    }
+    const edges = [];
+    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+      const a = pts[i], b = pts[j], d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (d < 165) { edges.push([a, b]); ctx.strokeStyle = `rgba(170,150,255,${(1 - d / 165) * .35})`; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+    }
+    for (const p of pts) { ctx.fillStyle = 'rgba(230,220,255,.75)'; ctx.beginPath(); ctx.arc(p.x, p.y, 2, 0, 7); ctx.fill(); }
+    if (edges.length && Math.random() < .08 && pk.length < 14) { const [a, b] = edges[Math.floor(Math.random() * edges.length)]; pk.push({ a, b, t: 0 }); }
+    for (let i = pk.length - 1; i >= 0; i--) {
+      const k = pk[i]; k.t += .018; if (k.t >= 1) { pk.splice(i, 1); continue; }
+      const x = k.a.x + (k.b.x - k.a.x) * k.t, y = k.a.y + (k.b.y - k.a.y) * k.t;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, 12); g.addColorStop(0, 'rgba(245,168,245,1)'); g.addColorStop(1, 'rgba(245,168,245,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 12, 0, 7); ctx.fill();
+    }
+  }};
+});
+(function loop() {
+  const sl = slides[cur];
+  if (sl) nets.forEach(n => { if (sl.contains(n.cv)) n.draw(); });
+  requestAnimationFrame(loop);
+})();
+
+/* ---------- start ---------- */
+const start = parseInt(location.hash.slice(1), 10);
+go(Number.isFinite(start) ? start - 1 : 0, false);
+})();
+</script>
+
+<!-- =====================================================================
+     SHAMBAT LIVE (Saga Bridge)
+     Menghubungkan presentasi ini dengan aplikasi Shambat untuk demo langsung.
+     Tekan L untuk menyalakan/mematikan. Hapus seluruh blok ini (sampai
+     "AKHIR SHAMBAT LIVE") untuk kembali ke presentasi asli.
+     ===================================================================== -->
+<style id="shambat-live-style">
+/* =====================================================================
+   SHAMBAT LIVE · lapisan demo langsung (Saga Bridge)
+   Semua kelas memakai awalan sl- agar tidak bentrok dengan slide.
+   ===================================================================== */
+
+/* ---------- tombol Live di bilah kontrol bawah ---------- */
+#ui #bLive{display:inline-flex;align-items:center;gap:7px}
+#ui #bLive::before{content:"";width:8px;height:8px;border-radius:50%;background:#5b6185;transition:background .3s,box-shadow .3s}
+body.sl-on #ui #bLive::before{background:#ffcf6b}
+body.sl-on.sl-ok #ui #bLive::before{background:#4fd8a6;box-shadow:0 0 8px #4fd8a6}
+body.sl-on.sl-err #ui #bLive::before{background:#ff7b7b}
+
+.sl-lamp{width:9px;height:9px;border-radius:50%;background:#5b6185;flex:none;display:inline-block}
+body.sl-on .sl-lamp{background:#ffcf6b}
+body.sl-on.sl-ok .sl-lamp{background:#4fd8a6;box-shadow:0 0 0 0 rgba(79,216,166,.6);animation:sl-pulse 2s infinite}
+body.sl-on.sl-err .sl-lamp{background:#ff7b7b}
+@keyframes sl-pulse{70%{box-shadow:0 0 0 8px rgba(79,216,166,0)}100%{box-shadow:0 0 0 0 rgba(79,216,166,0)}}
+
+.sl-b kbd,.sl-pill kbd,#sl-cue kbd{font:600 10.5px/1 'Inter',sans-serif;padding:3px 5px;border-radius:5px;background:rgba(255,255,255,.14);color:#e3e6ff;margin-left:2px}
+
+/* ---------- panggung saga (di dalam #stage, koordinat 1456x819) ---------- */
+.sl-layer{position:absolute;inset:0;opacity:0;visibility:hidden;transition:opacity .45s ease,visibility 0s linear .45s;font-family:'Inter',system-ui,sans-serif;color:#fff}
+.sl-layer.open{opacity:1;visibility:visible;transition:opacity .45s ease}
+#sl-theater{z-index:45;background:
+  radial-gradient(900px 620px at 104% -8%,rgba(75,82,242,.62),transparent 62%),
+  radial-gradient(620px 460px at -6% 108%,rgba(122,92,255,.30),transparent 60%),
+  rgba(0,0,0,.965);backdrop-filter:blur(6px);transition:transform .4s cubic-bezier(.2,.8,.2,1),opacity .45s ease,border-color .3s,box-shadow .3s}
+#sl-theater.mini{
+  inset:auto!important;
+  right:24px!important;
+  bottom:24px!important;
+  width:1456px!important;
+  height:819px!important;
+  transform:scale(0.36)!important;
+  transform-origin:bottom right!important;
+  border-radius:32px!important;
+  border:3px solid #7a5cff!important;
+  box-shadow:0 16px 50px rgba(0,0,0,.9),0 0 35px rgba(122,92,255,.5)!important;
+  cursor:pointer!important;
+}
+#sl-theater.mini:hover{
+  transform:scale(0.39)!important;
+  border-color:#f5a8f5!important;
+  box-shadow:0 20px 60px rgba(0,0,0,.95),0 0 45px rgba(245,168,245,.6)!important;
+}
+#sl-theater.mini .sl-right button[data-act="mini"]{background:rgba(122,92,255,.7);border-color:#f5a8f5}
+#sl-aud{z-index:46;background:
+  radial-gradient(760px 600px at 0% 0%,rgba(122,92,255,.42),transparent 60%),
+  radial-gradient(700px 520px at 100% 100%,rgba(245,168,245,.22),transparent 60%),
+  #000}
+
+.sl-top{position:absolute;left:66px;top:40px;display:flex;align-items:center;gap:10px;font:500 16px 'Inter',sans-serif;color:#c3c9f7}
+.sl-title{position:absolute;left:66px;top:70px;max-width:920px;font:800 34px/1.08 'Archivo',sans-serif;text-transform:uppercase}
+.sl-sub{position:absolute;left:66px;top:116px;max-width:930px;font:400 17px/1.4 'Inter',sans-serif;color:#aab2ec;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sl-right{position:absolute;right:66px;top:36px;display:flex;gap:8px;align-items:center}
+.sl-pill{height:36px;padding:0 14px;border-radius:18px;display:inline-flex;align-items:center;gap:8px;font:600 14px 'Inter',sans-serif;color:#fff;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.2);white-space:nowrap}
+button.sl-pill{cursor:pointer;transition:background .25s,border-color .25s}
+button.sl-pill:hover{background:rgba(122,92,255,.45);border-color:#fff}
+.sl-pill.warn{color:#ffcf6b;border-color:rgba(255,207,107,.55)}
+.sl-pill.good{color:#4fd8a6;border-color:rgba(79,216,166,.55)}
+
+/* kabel dan titik */
+.sl-wires{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.sl-wires .w{fill:none;stroke:#6f84e0;stroke-width:2}
+.sl-wires .w.sl-dash{stroke-dasharray:6 7}
+.sl-wires .w.tube{stroke:#ffcf6b;stroke-opacity:.7}
+.sl-wires .ghost{fill:none;stroke:none}
+.sl-dot{position:absolute;left:0;top:0;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:var(--c,#8fb0ff);
+  box-shadow:0 0 10px 2px var(--c,#8fb0ff),0 0 28px 6px color-mix(in srgb,var(--c,#8fb0ff) 50%,transparent);z-index:9;pointer-events:none}
+
+/* simpul layanan */
+.sl-node{position:absolute;width:196px;height:62px;margin:-31px 0 0 -98px;border-radius:31px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font:700 19px 'Inter',sans-serif;background:linear-gradient(90deg,#7a5cff,#f5a8f5);z-index:3;transition:box-shadow .35s,filter .35s,background .35s}
+.sl-node.app{width:178px;height:44px;margin:-22px 0 0 -89px;border-radius:22px;background:#1e2a6e;font:600 15px 'Inter',sans-serif;color:#dfe3ff}
+.sl-node.sl-orch{width:236px;height:136px;margin:-68px 0 0 -118px;border-radius:50%}
+.sl-node.sl-orch small{font:400 14px/1.2 'Courier Prime',monospace;margin-top:4px;max-width:200px;text-align:center;opacity:.92}
+.sl-node.g{box-shadow:0 0 0 3px #4fd8a6,0 0 38px rgba(79,216,166,.7)}
+.sl-node.r{box-shadow:0 0 0 3px #ff7b7b,0 0 38px rgba(255,123,123,.7)}
+.sl-node.x{background:linear-gradient(90deg,#a3304f,#ff7b7b);box-shadow:0 0 0 3px #ff7b7b,0 0 44px rgba(255,123,123,.8);animation:sl-shake .5s}
+.sl-node.sl-orch.comp{box-shadow:0 0 0 3px #ff7b7b,0 0 50px rgba(255,123,123,.55)}
+.sl-node.sl-orch.comp small{color:#fff}
+@keyframes sl-shake{20%{translate:-7px 0}40%{translate:6px 0}60%{translate:-4px 0}80%{translate:3px 0}}
+
+/* tabung outbox */
+.sl-tube{position:absolute;left:66px;top:178px;width:250px;height:446px;border-radius:16px;background:#0b0f26;border:2px solid #2b3576;padding:14px 12px 12px;display:flex;flex-direction:column;gap:10px;z-index:3}
+.sl-tube h4{display:flex;justify-content:space-between;align-items:baseline;font:700 17px 'Inter',sans-serif}
+.sl-tube h4 span+span{font:500 13.5px 'Inter',sans-serif;color:#ffcf6b}
+.sl-tube h4 span+span.zero{color:#7d86bd}
+.sl-age{margin-top:-4px;font:500 12.5px 'Inter',sans-serif;color:#ffcf6b}
+.sl-age.late{color:#ff7b7b}
+.sl-age[hidden]{display:none}
+.sl-chips{flex:1;display:flex;flex-direction:column;gap:7px;overflow:hidden}
+.sl-chip{flex:none;height:42px;border-radius:9px;background:#141b4a;border-left:4px solid var(--ec,#8fb0ff);padding:0 10px;display:flex;flex-direction:column;justify-content:center;
+  font:400 15px/1.15 'Courier Prime',monospace;transition:opacity .35s,transform .35s}
+.sl-chip small{font-size:12.5px;color:#9aa3d9}
+.sl-chip.enter{animation:sl-chip-in .45s cubic-bezier(.2,.8,.2,1)}
+.sl-chip.leave{opacity:0;transform:translateX(60px)}
+@keyframes sl-chip-in{from{opacity:0;transform:translateY(16px) scale(.92)}}
+.sl-chips .more,.sl-chips .empty{font:500 13px/1.4 'Inter',sans-serif;color:#7d86bd;padding:4px 2px}
+.sl-relay{display:flex;align-items:center;gap:8px;font:500 13.5px/1.3 'Inter',sans-serif;color:#c9cffb;border-top:1px solid #222b63;padding-top:10px}
+.sl-relay i{width:8px;height:8px;border-radius:50%;background:#4fd8a6;flex:none}
+.sl-relay.held i{background:#ffcf6b}
+
+/* tabel outbox langsung */
+.sl-table{position:absolute;left:66px;top:178px;width:940px;display:none;border-radius:14px;overflow:hidden;border:1px solid #10184a}
+#sl-theater.sl-tblview .sl-table{display:block}
+#sl-theater.sl-tblview .sl-flow{display:none}
+.sl-tr{display:grid;grid-template-columns:62px 200px 200px 124px 1fr 1fr;height:40px;align-items:center;font:400 15px 'Courier Prime',monospace;background:#192359}
+.sl-tr:nth-child(even){background:#1b2662}
+.sl-tr>span{padding:0 10px;border-right:1px solid #10184a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sl-tr.sl-hd{background:#24317d;font:700 14px 'Courier Prime',monospace;color:#dfe3ff}
+.sl-tr .pending{color:#ffcf6b}.sl-tr .processed{color:#4fd8a6}.sl-tr .failed{color:#ff7b7b}
+.sl-tr .null{color:#6f78b4}
+.sl-tr.fl{animation:sl-row 1.6s ease}
+@keyframes sl-row{from{background:#5a4fd6}}
+.sl-tbl-note{padding:10px 12px;font:400 14px/1.45 'Inter',sans-serif;color:#aab2ec;background:#0b0f26}
+
+/* panel kanan: jejak saga + stok */
+.sl-side{position:absolute;left:1050px;top:160px;width:342px}
+.sl-side h4,.sl-stock h4{font:700 17px 'Inter',sans-serif;margin-bottom:10px}
+.sl-log{height:344px;overflow:hidden;display:flex;flex-direction:column;gap:7px}
+.sl-li{display:grid;grid-template-columns:58px 10px 1fr;gap:8px;align-items:start;font:500 14px/1.32 'Inter',sans-serif;color:#e6e8ff;animation:sl-li-in .45s cubic-bezier(.2,.8,.2,1)}
+.sl-li time{font:400 12.5px/1.6 'Courier Prime',monospace;color:#8d95c9}
+.sl-li i{width:9px;height:9px;border-radius:50%;margin-top:5px;background:#4fd8a6}
+.sl-li.r i{background:#ff7b7b}.sl-li.r{color:#ffd2d2}
+.sl-li p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sl-li b{display:block;margin-top:2px;font:400 12px 'Courier Prime',monospace;color:#8d95c9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sl-li>div{min-width:0}
+.sl-log .empty{font:400 14px/1.5 'Inter',sans-serif;color:#7d86bd}
+@keyframes sl-li-in{from{opacity:0;transform:translateY(-10px)}}
+.sl-stock{position:absolute;left:1050px;top:548px;width:342px}
+.sl-sr{display:grid;grid-template-columns:148px 1fr 40px;gap:10px;align-items:center;height:26px;font:500 13.5px 'Inter',sans-serif;position:relative}
+.sl-sr span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#d7dbff}
+.sl-bar{height:8px;border-radius:4px;background:#141b4a;overflow:hidden}
+.sl-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#7a5cff,#f5a8f5);transition:width .7s cubic-bezier(.2,.8,.2,1)}
+.sl-sr em{font:400 16px 'Courier Prime',monospace;font-style:normal;text-align:right}
+.sl-sr.zero em{color:#ff7b7b}
+.sl-delta{position:absolute;right:-30px;top:4px;font:700 14px 'Inter',sans-serif;animation:sl-delta 1.8s ease forwards}
+.sl-delta.dn{color:#ffcf6b}.sl-delta.up{color:#4fd8a6}
+@keyframes sl-delta{0%{opacity:0;transform:translateY(6px)}15%{opacity:1;transform:none}75%{opacity:1}100%{opacity:0;transform:translateY(-10px)}}
+
+/* jalur status per pesanan (meniru slide 23) */
+.sl-tracks{position:absolute;left:66px;top:660px;width:952px;display:flex;flex-direction:column;gap:10px}
+.sl-trk{display:grid;grid-template-columns:196px repeat(5,1fr);gap:8px;align-items:center;height:46px}
+.sl-trk .who{font:700 15px/1.2 'Inter',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sl-trk .who small{display:block;font:400 12.5px 'Courier Prime',monospace;color:#9aa3d9}
+.sl-st{height:36px;border-radius:18px;display:grid;place-items:center;padding:0 10px;font:600 13px 'Inter',sans-serif;color:#7d86bd;background:#10173f;border:1px solid #232c66;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .35s,color .35s,border-color .35s}
+.sl-st.ok{color:#06261b;background:#4fd8a6;border-color:#4fd8a6}
+.sl-st.ko{color:#3a0000;background:#ff7b7b;border-color:#ff7b7b}
+.sl-st.undo{color:#ffb4b4;background:rgba(255,123,123,.13);border-color:#ff7b7b}
+.sl-tracks .empty{font:400 15px/1.5 'Inter',sans-serif;color:#7d86bd;padding-top:12px}
+
+/* angka backlog asli di slide 26 */
+.sl-backlog{display:none;color:#ffcf6b}
+.sl-backlog.late{color:#ff7b7b}
+body.sl-on.sl-ok .sl-backlog{display:block}
+body.sl-on.sl-ok [data-key="s26"] .backlog{visibility:hidden}
+
+/* ---------- layar audiens (QR) ---------- */
+.sl-qr{position:absolute;left:120px;top:176px;width:372px;height:372px;border-radius:24px;background:#fff;display:grid;place-items:center;box-shadow:0 30px 80px rgba(122,92,255,.35)}
+.sl-qr-box{width:316px;height:316px;display:grid;place-items:center;color:#0b0f26;font:600 15px/1.4 'Inter',sans-serif;text-align:center}
+.sl-qr-box img,.sl-qr-box canvas{width:316px!important;height:316px!important}
+.sl-qr-url{position:absolute;left:96px;top:572px;width:420px;text-align:center;font:400 21px 'Courier Prime',monospace;word-break:break-all;color:#f5d6f7}
+.sl-aud-title{position:absolute;left:588px;top:150px;width:760px;font:800 50px/1.03 'Archivo',sans-serif;text-transform:uppercase}
+.sl-aud-p{position:absolute;left:588px;top:272px;width:700px;font:400 20px/1.5 'Inter',sans-serif;color:#d6daff}
+.sl-aud-n{position:absolute;left:588px;top:388px;display:flex;align-items:baseline;gap:14px}
+.sl-aud-n b{font:800 64px/1 'Archivo',sans-serif;background:linear-gradient(90deg,#7a5cff,#f5a8f5);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sl-aud-n span{font:500 20px 'Inter',sans-serif;color:#d6daff}
+.sl-aud-list{position:absolute;left:588px;top:480px;width:770px;display:flex;flex-direction:column;gap:8px}
+.sl-ar{display:grid;grid-template-columns:200px 1fr 130px;gap:14px;align-items:center;height:44px;padding:0 16px;border-radius:12px;background:rgba(20,27,74,.85);font:500 16px 'Inter',sans-serif;animation:sl-li-in .45s}
+.sl-ar b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sl-ar span{color:#aab2ec;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sl-ar em{font-style:normal;font-weight:700;text-align:right;color:#ffcf6b}
+.sl-ar em.ok{color:#4fd8a6}.sl-ar em.ko{color:#ff7b7b}
+.sl-aud-list .empty{font:400 17px/1.5 'Inter',sans-serif;color:#9aa3d9}
+.sl-aud-close{position:absolute;right:66px;top:36px}
+
+/* ---------- web langsung (layar terbagi) ---------- */
+#sl-web{position:fixed;top:0;right:0;bottom:0;width:46vw;z-index:64;background:#070a1f;border-left:1px solid rgba(255,255,255,.14);display:flex;flex-direction:column;
+  transform:translateX(102%);transition:transform .5s cubic-bezier(.2,.8,.2,1);font:500 13px 'Inter',sans-serif;color:#fff}
+body.sl-split #sl-web{transform:none}
+body.sl-split #stage{transition:left .5s cubic-bezier(.2,.8,.2,1),transform .5s cubic-bezier(.2,.8,.2,1)}
+body.sl-split #ui{right:calc(46vw + 16px)}
+body.sl-split #help{display:none}
+.sl-web-bar{height:54px;flex:none;display:flex;align-items:center;gap:6px;padding:0 12px;border-bottom:1px solid rgba(255,255,255,.1)}
+.sl-web-bar .sl-url{font:400 12.5px 'Courier Prime',monospace;color:#8d95c9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1;padding:0 6px}
+#sl-web iframe{flex:1;width:100%;border:0;background:#fff}
+
+/* ---------- panel kontrol presenter ---------- */
+#sl-dock{position:fixed;left:16px;bottom:60px;z-index:66;width:486px;max-width:calc(100vw - 32px);padding:14px 14px 12px;border-radius:18px;background:rgba(12,14,34,.95);border:1px solid rgba(255,255,255,.14);
+  backdrop-filter:blur(10px);box-shadow:0 18px 50px rgba(0,0,0,.5);font:500 13px 'Inter',sans-serif;color:#e8eaff;display:none;flex-direction:column;gap:10px;
+  opacity:0;pointer-events:none;transform:translateY(12px);transition:opacity .25s ease,transform .25s ease}
+body.sl-on #sl-dock{display:flex}
+body.sl-on #sl-dock.open,body.sl-on #sl-dock.pinned,body.sl-on.sl-needs #sl-dock{opacity:1;pointer-events:auto;transform:translateY(0)}
+body.sl-split #sl-dock{max-width:calc(54vw - 32px)}
+.sl-head{display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.1)}
+.sl-status{flex:1;min-width:0;font:600 13px/1.35 'Inter',sans-serif}
+.sl-row{display:grid;grid-template-columns:86px 1fr;gap:8px;align-items:start}
+.sl-lbl{color:#9aa3d9;line-height:30px}
+.sl-ctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
+.sl-b{height:30px;padding:0 11px;border-radius:15px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05);color:#fff;cursor:pointer;
+  font:600 12.5px 'Inter',sans-serif;display:inline-flex;align-items:center;gap:6px;text-decoration:none;white-space:nowrap;transition:background .2s,border-color .2s}
+.sl-b:hover{background:rgba(122,92,255,.5);border-color:rgba(255,255,255,.6)}
+.sl-b:focus-visible,.sl-pill:focus-visible,#sl-cue:focus-visible{outline:2px solid #f5a8f5;outline-offset:2px}
+.sl-b.on{background:linear-gradient(90deg,#7a5cff,#f5a8f5);border-color:transparent}
+.sl-b.sl-danger{color:#ffb4b4;border-color:rgba(255,123,123,.45)}
+.sl-b.sl-danger.armed{background:#ff7b7b;color:#300;border-color:#ff7b7b}
+.sl-b:disabled{opacity:.45;cursor:default}
+.sl-seg{display:inline-flex;gap:4px}
+.sl-qcount{color:#ffcf6b;font-weight:600;margin-left:2px}
+.sl-qcount.zero{color:#7d86bd}
+.sl-hooktxt{flex:1 1 220px;min-width:0;color:#dfe3ff;line-height:1.35}
+.sl-conn{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;padding:10px;border-radius:12px;background:rgba(255,255,255,.04)}
+.sl-conn[hidden]{display:none}
+.sl-conn label{display:flex;flex-direction:column;gap:4px;color:#9aa3d9;font-size:12px}
+.sl-conn input{height:32px;border-radius:8px;border:1px solid rgba(255,255,255,.22);background:#0b0f26;color:#fff;padding:0 9px;font:400 13px 'Courier Prime',monospace;min-width:0}
+.sl-conn input:focus{outline:2px solid #7a5cff;border-color:transparent}
+.sl-conn p{grid-column:1/-1;color:#9aa3d9;font:400 12px/1.45 'Inter',sans-serif}
+.sl-conn code{font-family:'Courier Prime',monospace;color:#f5d6f7}
+
+/* petunjuk aksi untuk slide aktif */
+#sl-cue{position:fixed;left:16px;bottom:14px;z-index:65;display:none;align-items:center;gap:9px;height:36px;max-width:min(620px,58vw);padding:0 10px 0 13px;border-radius:18px;
+  background:rgba(14,16,38,.86);border:1px solid rgba(255,255,255,.18);color:#e8eaff;font:500 13.5px 'Inter',sans-serif;backdrop-filter:blur(6px);cursor:pointer}
+#sl-cue,body.sl-on #sl-cue{display:none !important}
+body.sl-on.sl-layer-open #sl-cue{display:none}
+#sl-cue .sl-cue-txt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.sl-split #sl-cue{max-width:calc(54vw - 420px)}
+#sl-cue.idle .sl-cue-txt{color:#9aa3d9}
+#sl-cue.idle kbd{display:none}
+#sl-cue.hook{border-color:rgba(245,168,245,.6)}
+
+/* notifikasi */
+#sl-toasts{position:fixed;top:16px;right:16px;z-index:70;display:flex;flex-direction:column;gap:8px;align-items:flex-end;pointer-events:none}
+body.sl-split #sl-toasts{right:calc(46vw + 16px)}
+.sl-toast{max-width:430px;padding:11px 16px;border-radius:14px;background:rgba(14,16,38,.94);border:1px solid rgba(255,255,255,.18);font:500 14px/1.4 'Inter',sans-serif;color:#eef0ff;
+  backdrop-filter:blur(8px);box-shadow:0 12px 34px rgba(0,0,0,.45);animation:sl-toast-in .35s cubic-bezier(.2,.8,.2,1);transition:opacity .4s,transform .4s}
+.sl-toast.ok{border-color:rgba(79,216,166,.7)}
+.sl-toast.err{border-color:rgba(255,123,123,.75)}
+.sl-toast.aud{border-color:rgba(245,168,245,.8);background:linear-gradient(90deg,rgba(122,92,255,.35),rgba(245,168,245,.18)),rgba(14,16,38,.94)}
+.sl-toast.out{opacity:0;transform:translateX(24px)}
+@keyframes sl-toast-in{from{opacity:0;transform:translateX(24px)}}
+
+@media (prefers-reduced-motion:reduce){
+  .sl-node.x,.sl-chip.enter,.sl-li,.sl-ar,.sl-toast,.sl-tr.fl{animation:none}
+  body.sl-on.sl-ok .sl-lamp{animation:none}
+}
+
+</style>
+<script id="shambat-live-script">
+(() => {
+'use strict';
+
+/* =====================================================================
+   SHAMBAT LIVE · menghubungkan presentasi ini dengan aplikasi Shambat.
+   Aktif/nonaktif: tekan L (atau tombol Live di bilah bawah).
+   Saat mati, tidak ada satu pun permintaan jaringan yang dikirim.
+   ===================================================================== */
+
+const W = 1456, H = 819;
+const stage = document.getElementById('stage');
+if (!stage) return;
+const slides = [...stage.querySelectorAll(':scope > .slide')];
+const $ = (s, el) => (el || document).querySelector(s);
+const $$ = (s, el) => [...(el || document).querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('shambatLive.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('shambatLive.' + k, JSON.stringify(v)); } catch (e) { /* mode privat */ } },
+};
+
+/* ---------- konfigurasi koneksi ---------- */
+const qs = new URLSearchParams(location.search);
+const servedByApp = /^https?:$/.test(location.protocol) && /\/presentasi\/?$/.test(location.pathname);
+const cfg = {
+  base: servedByApp ? location.origin : store.get('base', 'http://127.0.0.1:8000'),
+  key: String(qs.get('key') || store.get('key', '') || '').trim().toUpperCase(),
+};
+const keyFromUrl = qs.has('key');
+if (keyFromUrl) {
+  store.set('key', cfg.key);
+  qs.delete('key');
+  const rest = qs.toString();
+  history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
+}
+const hostLabel = () => { try { return new URL(cfg.base).host; } catch (e) { return cfg.base; } };
+
+/* ---------- status ---------- */
+const MODES = ['sinematik', 'manual', 'instan'];
+const S = {
+  on: false, status: 'off', info: null,
+  mode: MODES.includes(store.get('mode')) ? store.get('mode') : 'sinematik',
+  lastLog: 0, primed: false, feed: null, queueTotal: 0,
+  orders: new Map(), tracks: new Map(), focus: [],
+  maxStock: {}, shownStock: {},
+  failShown: new Set(),
+  stepping: false, stepDone: 0, seenSeq: 0, lastStepAt: 0, busy: false,
+  slide: -1, theater: false, mini: false, view: 'flow', aud: false, web: false, webTab: 'shop',
+  resetArmed: 0, wasOk: false,
+};
+
+const SCENARIOS = {
+  sukses: 'Sukses',
+  gagal_stok: 'Gagal stok',
+  gagal_kirim: 'Gagal kirim',
+  rebutan: 'Unit terakhir',
+};
+
+/* Aksi khusus per slide (nomor halaman). Slide mana pun juga bisa diberi
+   atribut data-live="sukses|gagal_stok|gagal_kirim|rebutan". */
+const HOOKS = {
+  1: { text: 'Ajak audiens belanja di Shambat dari HP', run: () => openAud() },
+  3: { text: 'Ulangi kejadian ini di Shambat: kurir gagal, stok dikembalikan', run: () => scenario('gagal_kirim') },
+  5: { text: 'Uji isolation: dua pembeli berebut unit terakhir', run: () => scenario('rebutan') },
+  8: { text: 'Jalankan saga sungguhan yang gagal di stok', run: () => scenario('gagal_stok') },
+  12: { text: 'Lihat orkestrator Shambat menangani satu pesanan', run: () => scenario('sukses') },
+  14: { text: 'Jalankan happy path ini di Shambat', run: () => scenario('sukses') },
+  15: { text: 'Jalankan failure path ini di Shambat', run: () => scenario('gagal_kirim') },
+  18: { text: 'Tahan relay, buat pesanan, lihat event menunggu di outbox', run: () => { setMode('manual'); scenario('sukses'); } },
+  19: { text: 'Buka isi tabel outbox_messages yang asli', run: () => openTheater('table') },
+  22: { text: 'Lihat saga dan outbox bekerja bersama', run: () => scenario('sukses') },
+  23: { text: 'Buka halaman status pesanan yang asli', run: () => openWeb('status') },
+  24: { text: 'Buka dashboard admin Shambat', run: () => openWeb('admin') },
+  25: { text: 'Ganti demo Python dengan Shambat yang sedang berjalan', run: () => scenario('sukses') },
+  26: { text: 'Matikan relay, lalu tiga pesanan menumpuk di outbox', run: () => { setMode('manual'); scenario('sukses', 3); later(() => toast('Relay ditahan. Tekan N untuk satu event, atau Shift+N untuk menghidupkan relay.', 'info', 7000), 1500); } },
+  28: { text: 'Pesan lewat web dan lihat sagamu di layar', run: () => openWeb('shop') },
+  32: { text: 'Tampilkan rekap pesanan audiens', run: () => openAud() },
+};
+
+/* ---------- jaringan ---------- */
+async function api(path, { method = 'GET', body, timeout = 8000 } = {}) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeout);
+  let res;
+  try {
+    res = await fetch(cfg.base.replace(/\/+$/, '') + '/saga-bridge/api/' + path, {
+      method, signal: ctl.signal, cache: 'no-store',
+      headers: Object.assign({ Accept: 'application/json', 'X-Saga-Bridge-Key': cfg.key }, body ? { 'Content-Type': 'application/json' } : {}),
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {
+    throw Object.assign(new Error('Server tidak terjangkau. Pastikan php artisan serve berjalan.'), { code: 'down' });
+  } finally {
+    clearTimeout(timer);
+  }
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* bukan JSON */ }
+  if (res.status === 503) throw Object.assign(new Error((data && data.message) || 'Bridge nonaktif di server.'), { code: 'disabled' });
+  if (res.status === 401) throw Object.assign(new Error((data && data.message) || 'Kunci bridge salah.'), { code: 'badkey' });
+  if (res.status === 404) throw Object.assign(new Error('Endpoint bridge tidak ditemukan. Modul belum terpasang atau SAGA_BRIDGE_ALLOWED=false.'), { code: 'missing' });
+  if (!res.ok || !data) throw Object.assign(new Error((data && data.message) || ('Server membalas HTTP ' + res.status)), { code: 'error' });
+  return data;
+}
+
+const timers = new Set();
+function later(fn, ms) { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); return id; }
+
+let pollTimer = null, polling = false, pollAgain = false;
+async function poll() {
+  if (!S.on) return;
+  if (!S.info) return connect();
+  if (polling) { pollAgain = true; return; }
+  polling = true;
+  clearTimeout(pollTimer);
+  const seq = S.stepDone;
+  try {
+    const d = await api('feed?after=' + S.lastLog + '&hold=' + (S.mode === 'instan' ? 0 : 1));
+    if (!S.on) return;
+    setStatus('ok');
+    ingest(d);
+    S.seenSeq = Math.max(S.seenSeq, seq);
+  } catch (e) {
+    setStatus(e.code || 'error', e.message);
+  } finally {
+    polling = false;
+  }
+  if (!S.on) return;
+  if (pollAgain) { pollAgain = false; return poll(); }
+  pollTimer = setTimeout(poll, S.status === 'ok' ? 1000 : 3000);
+}
+
+async function connect() {
+  clearTimeout(pollTimer);
+  if (!S.on) return;
+  if (!cfg.key) { setStatus('nokey'); return; }
+  setStatus('connecting');
+  try {
+    const p = await api('ping');
+    if (!S.on) return;
+    S.info = p;
+    S.lastLog = p.last_log_id || 0;
+    S.primed = false;
+    setStatus('ok');
+    poll();
+  } catch (e) {
+    setStatus(e.code || 'error', e.message);
+    if (S.on && e.code !== 'badkey') pollTimer = setTimeout(connect, 3500);
+  }
+}
+
+/* ---------- menyalakan / mematikan ---------- */
+function setLive(on) {
+  if (on === S.on) return;
+  S.on = on;
+  store.set('on', on);
+  document.body.classList.toggle('sl-on', on);
+  if (on) {
+    S.info = null;
+    connect();
+    toast('Live aktif. Presentasi terhubung ke Shambat.', 'ok', 2600);
+  } else {
+    clearTimeout(pollTimer);
+    timers.forEach(clearTimeout); timers.clear();
+    if (S.status === 'ok') api('release', { method: 'POST', body: {} }).catch(() => {});
+    S.info = null; S.status = 'off';
+    closeTheater(); closeAud(); closeWeb();
+    document.body.classList.remove('sl-ok', 'sl-err', 'sl-needs');
+    renderStatus();
+    toast('Live mati. Presentasi kembali seperti biasa.', 'info', 2600);
+  }
+  updateHook();
+}
+
+const STATUS_TEXT = {
+  off: () => 'Live mati',
+  connecting: () => 'Menghubungkan ke ' + hostLabel() + '…',
+  ok: () => 'Terhubung ke Shambat di ' + hostLabel(),
+  nokey: () => 'Isi kunci bridge untuk mulai',
+  badkey: () => 'Kunci salah. Cek "php artisan saga-bridge status"',
+  disabled: () => 'Bridge nonaktif di server. Jalankan "php artisan saga-bridge on"',
+  down: () => 'Server tidak terjangkau di ' + hostLabel(),
+  missing: () => 'Modul Saga Bridge belum terpasang di server',
+  error: m => m || 'Terjadi kesalahan',
+};
+function setStatus(code, msg) {
+  const was = S.status;
+  S.status = code;
+  S.statusMsg = msg;
+  const ok = code === 'ok';
+  document.body.classList.toggle('sl-ok', ok && S.on);
+  document.body.classList.toggle('sl-err', S.on && !ok && code !== 'connecting');
+  document.body.classList.toggle('sl-needs', S.on && ['nokey', 'badkey', 'missing'].includes(code));
+  if (S.on && (code === 'nokey' || code === 'badkey')) showConn(true);
+  if (ok && was !== 'ok' && S.wasOk) toast('Terhubung lagi ke Shambat.', 'ok', 2400);
+  if (ok) S.wasOk = true;
+  if (was === 'ok' && !ok && S.on) toast(STATUS_TEXT[code] ? STATUS_TEXT[code](msg) : msg, 'err', 5000);
+  renderStatus();
+  updateHook();
+}
+
+/* ---------- membangun elemen ---------- */
+function el(tag, attrs, html) {
+  const e = document.createElement(tag);
+  if (attrs) Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v));
+  if (html) e.innerHTML = html;
+  return e;
+}
+
+// tombol Live di bilah kontrol presentasi
+const uiBar = $('#ui');
+const bLive = el('button', { id: 'bLive', title: 'Hubungkan ke aplikasi Shambat (L)' }, 'Live');
+if (uiBar) uiBar.insertBefore(bLive, $('#bFull') || null);
+bLive.onclick = () => setLive(!S.on);
+
+// panggung saga
+const theater = el('div', { id: 'sl-theater', class: 'sl-layer', 'aria-hidden': 'true' }, `
+  <div class="sl-top"><span class="sl-lamp"></span><span class="sl-src">Langsung dari Shambat</span></div>
+  <h2 class="sl-title">Saga berjalan di Shambat, bukan di slide</h2>
+  <p class="sl-sub">Jalankan skenario 1 sampai 4, atau ajak audiens checkout dari HP (Q).</p>
+  <div class="sl-right">
+    <span class="sl-pill sl-relay-pill">Relay berjalan</span>
+    <span class="sl-pill sl-aud-pill">0 pesanan audiens</span>
+    <button class="sl-pill" data-act="view"><span class="sl-view-lbl">Tabel outbox</span> <kbd>Y</kbd></button>
+    <button class="sl-pill" data-act="mini" title="Kecilkan panggung ke pojok slide (_)"><span class="sl-mini-lbl">Kecilkan</span> <kbd>_</kbd></button>
+    <button class="sl-pill" data-act="close">Tutup <kbd>Esc</kbd></button>
+  </div>
+  <div class="sl-flow">
+    <svg class="sl-wires" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true">
+      <path class="w sl-dash" id="sl-a-order" d="M680 190 L470 250"/>
+      <path class="w sl-dash" id="sl-a-pay" d="M680 190 L890 250"/>
+      <path class="w" id="sl-o-order" d="M680 405 L470 250"/>
+      <path class="w" id="sl-o-pay" d="M680 405 L890 250"/>
+      <path class="w" id="sl-o-stock" d="M680 405 L470 560"/>
+      <path class="w" id="sl-o-ship" d="M680 405 L890 560"/>
+      <path class="w sl-dash tube" id="sl-c-tube" d="M316 405 L562 405"/>
+      <path class="ghost" id="sl-w-order" d="M372 250 C344 250 334 286 316 300"/>
+      <path class="ghost" id="sl-w-pay" d="M890 219 C886 138 430 132 316 262"/>
+      <path class="ghost" id="sl-w-stock" d="M372 560 C344 560 334 530 316 520"/>
+      <path class="ghost" id="sl-w-ship" d="M890 591 C884 654 430 656 316 576"/>
+    </svg>
+    <div class="sl-tube">
+      <h4><span>Outbox</span><span class="sl-qn zero">kosong</span></h4>
+      <div class="sl-age" hidden></div>
+      <div class="sl-chips"></div>
+      <div class="sl-relay"><i></i><span>Relay berjalan otomatis</span></div>
+    </div>
+    <div class="sl-node app" data-n="app" style="left:680px;top:190px">Toko &amp; webhook</div>
+    <div class="sl-node" data-n="order" style="left:470px;top:250px">Pesanan</div>
+    <div class="sl-node" data-n="pay" style="left:890px;top:250px">Pembayaran</div>
+    <div class="sl-node" data-n="stock" style="left:470px;top:560px">Stok</div>
+    <div class="sl-node" data-n="ship" style="left:890px;top:560px">Pengiriman</div>
+    <div class="sl-node sl-orch" data-n="orch" style="left:680px;top:405px"><span>Orkestrator</span><small>menunggu event</small></div>
+  </div>
+  <div class="sl-table">
+    <div class="sl-tr sl-hd"><span>id</span><span>aggregate_id</span><span>event_type</span><span>status</span><span>created_at</span><span>processed_at</span></div>
+    <div class="sl-tb-body"></div>
+    <div class="sl-tbl-note">Isi tabel <b>outbox_messages</b> saat ini, 10 baris terbaru. Shambat menandai event terkirim lewat kolom status dan processed_at (di slide memakai sent_at).</div>
+  </div>
+  <div class="sl-side"><h4>Jejak saga</h4><div class="sl-log"><div class="empty">Belum ada langkah. Log dari tabel saga_logs akan muncul di sini.</div></div></div>
+  <div class="sl-stock"><h4>Stok produk</h4><div class="sl-srs"></div></div>
+  <div class="sl-tracks"><div class="empty">Status pesanan akan bergerak di sini, persis seperti yang dilihat pembeli.</div></div>
+`);
+stage.appendChild(theater);
+const flow = $('.sl-flow', theater);
+const nodes = {};
+$$('.sl-node', theater).forEach(n => { nodes[n.dataset.n] = n; });
+const wires = {};
+$$('.sl-wires path', theater).forEach(p => { wires[p.id.replace('sl-', '')] = p; });
+
+// layar audiens
+const aud = el('div', { id: 'sl-aud', class: 'sl-layer', 'aria-hidden': 'true' }, `
+  <div class="sl-qr"><div class="sl-qr-box">Menyiapkan kode QR…</div></div>
+  <div class="sl-qr-url"></div>
+  <h2 class="sl-aud-title">Ikut belanja di Shambat</h2>
+  <p class="sl-aud-p">Pindai kode ini, pilih produk, lalu checkout. Mau melihat kompensasi? Nyalakan simulasi gagal di halaman checkout. Pesananmu langsung muncul di layar ini.</p>
+  <div class="sl-aud-n"><b>0</b><span>pesanan dari audiens</span></div>
+  <div class="sl-aud-list"><div class="empty">Belum ada pesanan. Jadilah yang pertama.</div></div>
+  <button class="sl-pill sl-aud-close" data-act="close">Tutup <kbd>Esc</kbd></button>
+`);
+stage.appendChild(aud);
+
+// web langsung
+const web = el('aside', { id: 'sl-web', 'aria-label': 'Aplikasi Shambat', 'aria-hidden': 'true' }, `
+  <div class="sl-web-bar">
+    <button class="sl-b" data-web="shop">Toko</button>
+    <button class="sl-b" data-web="status">Status pesanan</button>
+    <button class="sl-b" data-web="admin">Admin</button>
+    <span class="sl-url"></span>
+    <a class="sl-b sl-web-open" target="_blank" rel="noopener">Tab baru</a>
+    <button class="sl-b" data-act="close-web">Tutup <kbd>W</kbd></button>
+  </div>
+  <iframe title="Aplikasi Shambat"></iframe>
+`);
+document.body.appendChild(web);
+const iframe = $('iframe', web);
+
+// panel kontrol
+const dock = el('section', { id: 'sl-dock', 'aria-label': 'Kontrol Shambat Live' }, `
+  <div class="sl-head">
+    <span class="sl-lamp"></span><span class="sl-status">Live mati</span>
+    <button class="sl-b" data-act="conn" aria-expanded="false">Koneksi</button>
+    <button class="sl-b" data-act="minimize-dock" title="Minimize / sembunyikan panel kontrol ini (D / Esc)">Minimize <kbd>D</kbd></button>
+  </div>
+  <form class="sl-conn" hidden>
+    <label>Alamat server<input name="base" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:8000"></label>
+    <label>Kunci bridge<input name="key" autocomplete="off" spellcheck="false" placeholder="ABCD-2345"></label>
+    <button class="sl-b on" type="submit">Hubungkan</button>
+    <p>Kunci dicetak oleh <code>php artisan saga-bridge on</code>. Cara paling mulus: buka presentasi dari <code>/presentasi</code> di server Laravel.</p>
+  </form>
+  <div class="sl-row"><span class="sl-lbl">Relay outbox</span><div class="sl-ctl">
+    <span class="sl-seg" role="group" aria-label="Mode relay">
+      <button class="sl-b" data-mode="sinematik" title="Relay mengirim satu event per langkah, mengikuti animasi">Sinematik</button>
+      <button class="sl-b" data-mode="manual" title="Relay ditahan. Event dikirim saat kamu menekan N">Manual</button>
+      <button class="sl-b" data-mode="instan" title="Relay berjalan normal seperti aplikasi aslinya">Instan</button>
+    </span>
+    <button class="sl-b" data-act="step">Kirim 1 event <kbd>N</kbd></button>
+    <button class="sl-b" data-act="flush" title="Mode manual: relay hidup lagi dan backlog dikirim berurutan. Mode lain: kirim semua sekarang">Hidupkan relay <kbd>⇧N</kbd></button>
+    <span class="sl-qcount zero">0 menunggu</span>
+  </div></div>
+  <div class="sl-row"><span class="sl-lbl">Skenario</span><div class="sl-ctl">
+    <button class="sl-b" data-sc="sukses">Sukses <kbd>1</kbd></button>
+    <button class="sl-b" data-sc="gagal_stok">Gagal stok <kbd>2</kbd></button>
+    <button class="sl-b" data-sc="gagal_kirim">Gagal kirim <kbd>3</kbd></button>
+    <button class="sl-b" data-sc="rebutan">Unit terakhir <kbd>4</kbd></button>
+  </div></div>
+  <div class="sl-row"><span class="sl-lbl">Tampilkan</span><div class="sl-ctl">
+    <button class="sl-b" data-act="theater">Panggung saga <kbd>T</kbd></button>
+    <button class="sl-b" data-act="mini">Kecilkan <kbd>_</kbd></button>
+    <button class="sl-b" data-act="web">Web <kbd>W</kbd></button>
+    <button class="sl-b" data-act="aud">Audiens <kbd>Q</kbd></button>
+  </div></div>
+  <div class="sl-row"><span class="sl-lbl">Slide ini</span><div class="sl-ctl">
+    <span class="sl-hooktxt">Tidak ada aksi khusus.</span>
+    <button class="sl-b" data-act="hook" disabled>Jalankan <kbd>G</kbd></button>
+  </div></div>
+  <div class="sl-row"><span class="sl-lbl"></span><div class="sl-ctl">
+    <button class="sl-b sl-danger" data-act="reset">Reset data demo <kbd>⇧R</kbd></button>
+    <button class="sl-b" data-act="off">Matikan live <kbd>L</kbd></button>
+  </div></div>
+`);
+document.body.appendChild(dock);
+const connForm = $('.sl-conn', dock);
+
+const cue = el('button', { id: 'sl-cue', type: 'button', class: 'idle' }, '<span class="sl-lamp"></span><span class="sl-cue-txt">Live</span><kbd>G</kbd>');
+// document.body.appendChild(cue);
+const toasts = el('div', { id: 'sl-toasts', role: 'status', 'aria-live': 'polite' });
+document.body.appendChild(toasts);
+
+/* ---------- notifikasi ---------- */
+function toast(text, kind = 'info', ms = 4200) {
+  const t = el('div', { class: 'sl-toast ' + kind });
+  t.textContent = text;
+  toasts.appendChild(t);
+  while (toasts.children.length > 4) toasts.firstChild.remove();
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 450); }, ms);
+}
+
+/* ---------- render status & panel ---------- */
+function renderStatus() {
+  const txt = (STATUS_TEXT[S.status] || STATUS_TEXT.error)(S.statusMsg);
+  $('.sl-status', dock).textContent = txt;
+  $('.sl-src', theater).textContent = S.status === 'ok' ? 'Langsung dari Shambat · ' + hostLabel() : txt;
+  $$('[data-mode]', dock).forEach(b => {
+    b.classList.toggle('on', b.dataset.mode === S.mode);
+    b.setAttribute('aria-pressed', String(b.dataset.mode === S.mode));
+  });
+  const relay = $('.sl-relay', theater), pill = $('.sl-relay-pill', theater);
+  const q = S.queueTotal;
+  const relayText = {
+    sinematik: 'Relay sinematik: satu event per langkah',
+    manual: 'Relay ditahan. Tekan N untuk mengirim satu event',
+    instan: 'Relay berjalan normal',
+  }[S.mode];
+  relay.classList.toggle('held', S.mode === 'manual');
+  $('span', relay).textContent = relayText;
+  pill.textContent = S.mode === 'manual' ? `Relay ditahan · ${q} menunggu` : S.mode === 'sinematik' ? 'Relay sinematik' : 'Relay normal';
+  pill.className = 'sl-pill sl-relay-pill' + (S.mode === 'manual' ? ' warn' : ' good');
+  renderTubeCount();
+  renderBacklog();
+  const qc = $('.sl-qcount', dock);
+  qc.textContent = `${q} menunggu`;
+  qc.classList.toggle('zero', !q);
+  const live = S.on && S.status === 'ok';
+  $$('[data-sc],[data-act="step"],[data-act="flush"],[data-act="reset"]', dock).forEach(b => { b.disabled = !live || (!!b.dataset.sc && S.busy); });
+}
+
+/* ---------- aksi slide ---------- */
+function hookFor(i) {
+  const sl = slides[i];
+  if (!sl) return null;
+  const custom = sl.dataset.live;
+  if (custom && SCENARIOS[custom]) return { text: `Jalankan skenario ${SCENARIOS[custom].toLowerCase()} di Shambat`, run: () => scenario(custom) };
+  return HOOKS[i + 1] || null;
+}
+function updateHook() {
+  const h = hookFor(S.slide);
+  $('.sl-hooktxt', dock).textContent = h ? h.text : 'Tidak ada aksi khusus untuk slide ini.';
+  $('[data-act="hook"]', dock).disabled = !h;
+  cue.classList.toggle('idle', !h);
+  cue.classList.toggle('hook', !!h);
+  $('.sl-cue-txt', cue).textContent = h ? 'Coba di Shambat: ' + h.text : (S.status === 'ok' ? 'Live' : (STATUS_TEXT[S.status] || STATUS_TEXT.error)(S.statusMsg));
+  cue.title = h ? 'Jalankan (G)' : 'Buka panel kontrol';
+}
+function runHook() {
+  const h = hookFor(S.slide);
+  if (!h) { toast('Slide ini tidak punya aksi khusus. Pakai tombol 1 sampai 4.', 'info'); return; }
+  h.run();
+}
+const watchSlides = () => {
+  const i = slides.findIndex(s => s.classList.contains('active'));
+  if (i !== S.slide) { S.slide = i; updateHook(); }
+};
+const mo = new MutationObserver(watchSlides);
+slides.forEach(s => mo.observe(s, { attributes: true, attributeFilter: ['class'] }));
+watchSlides();
+
+/* ---------- perintah ke server ---------- */
+function ready() {
+  if (!S.on) { toast('Live sedang mati. Tekan L untuk menyalakan.', 'info'); return false; }
+  if (S.status !== 'ok') { toast((STATUS_TEXT[S.status] || STATUS_TEXT.error)(S.statusMsg), 'err'); return false; }
+  return true;
+}
+
+async function scenario(type, count = 1) {
+  if (!ready() || S.busy) return;
+  S.busy = true; renderStatus();
+  if (!S.web || S.view !== 'table') openTheater('flow');
+  try {
+    const r = await api('scenario', { method: 'POST', body: { type, count, hold: S.mode !== 'instan' } });
+    $('.sl-sub', theater).textContent = `${SCENARIOS[type]}: ${r.note}`;
+    if (S.mode === 'manual') later(() => toast('Relay ditahan. Tekan N untuk mengirim event berikutnya.', 'info', 5000), 900);
+  } catch (e) {
+    toast(e.message, 'err', 6000);
+  } finally {
+    S.busy = false; renderStatus();
+  }
+  poll();
+}
+
+async function doStep(manual) {
+  if (S.stepping) return;
+  if (manual && !ready()) return;
+  S.stepping = true;
+  try {
+    const r = await api('step', { method: 'POST', body: {} });
+    S.lastStepAt = Date.now();
+    S.stepDone++;
+    if (r.processed) {
+      if (r.processed.event === 'OrderCreated') enqueue(() => playAck(r.processed));
+    } else if (manual) {
+      toast('Outbox kosong. Semua event sudah dikirim.', 'info', 2600);
+    }
+  } catch (e) {
+    if (manual) toast(e.message, 'err');
+  } finally {
+    S.stepping = false;
+  }
+  poll();
+}
+
+function revive() {
+  if (S.mode === 'manual') {
+    setMode('sinematik');
+    toast('Relay hidup lagi. Backlog dikirim berurutan, satu event per langkah.', 'ok', 4200);
+  } else {
+    flush();
+  }
+}
+
+async function flush() {
+  if (!ready()) return;
+  try {
+    const r = await api('flush', { method: 'POST', body: {} });
+    toast(r.processed ? `Relay hidup lagi: ${r.processed} event terkirim.` : 'Outbox sudah kosong.', 'ok', 3200);
+  } catch (e) { toast(e.message, 'err'); }
+  poll();
+}
+
+function setMode(m) {
+  if (!MODES.includes(m) || m === S.mode) return;
+  S.mode = m;
+  store.set('mode', m);
+  renderStatus();
+  if (S.on && S.status === 'ok') {
+    if (m === 'instan') flush(); else poll();
+  }
+}
+
+async function resetDemo() {
+  if (!ready()) return;
+  if (Date.now() - S.resetArmed > 4000) {
+    S.resetArmed = Date.now();
+    $('[data-act="reset"]', dock).classList.add('armed');
+    toast('Tekan Shift+R sekali lagi untuk menghapus semua pesanan demo.', 'err', 4000);
+    later(() => $('[data-act="reset"]', dock).classList.remove('armed'), 4000);
+    return;
+  }
+  S.resetArmed = 0;
+  $('[data-act="reset"]', dock).classList.remove('armed');
+  try {
+    const r = await api('reset', { method: 'POST', body: {} });
+    anim.q.length = 0;
+    S.tracks.clear(); S.focus = []; S.failShown.clear(); S.maxStock = {}; S.shownStock = {};
+    $('.sl-log', theater).innerHTML = '<div class="empty">Data demo baru saja dikosongkan.</div>';
+    $('.sl-chips', theater).innerHTML = '';
+    renderTracks();
+    orchSay('menunggu event'); setOrch('');
+    $('.sl-sub', theater).textContent = 'Data bersih. Jalankan skenario 1 sampai 4.';
+    toast(r.message || 'Data demo dikosongkan.', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+  poll();
+}
+
+/* relay sinematik: kirim event berikutnya setelah animasi sebelumnya selesai */
+setInterval(() => {
+  if (!S.on || S.status !== 'ok' || S.mode !== 'sinematik') return;
+  if (S.stepping || S.seenSeq < S.stepDone || anim.busy || anim.q.length) return;
+  if (!S.queueTotal) return;
+  if (Date.now() - S.lastStepAt < (S.theater ? 1000 : 350)) return;
+  doStep(false);
+}, 250);
+
+/* ---------- data masuk ---------- */
+function ingest(d) {
+  S.feed = d;
+  S.queueTotal = d.queue_total || 0;
+  if ((d.last_log_id || 0) < S.lastLog) S.lastLog = d.last_log_id || 0; // database di-reset dari luar
+
+  for (const o of d.orders || []) {
+    const prev = S.orders.get(o.code);
+    S.orders.set(o.code, o);
+    if (!S.primed || o.presenter) continue;
+    if (!prev) toast(`${o.customer} baru checkout: ${o.product}`, 'aud', 5200);
+    else if (prev.status !== o.status && o.status === 'COMPLETED') toast(`Pesanan ${o.customer} selesai. Saga sukses.`, 'ok', 4600);
+    else if (prev.status !== o.status && o.status === 'CANCELED') toast(`Pesanan ${o.customer} dibatalkan lewat kompensasi.`, 'err', 5200);
+  }
+
+  for (const log of d.logs || []) {
+    if (log.id <= S.lastLog) continue;
+    S.lastLog = log.id;
+    if (S.primed) enqueue(() => play(log));
+  }
+
+  renderStatus();
+  renderTable(d.outbox || []);
+  renderAud(d);
+  $('.sl-aud-pill', theater).textContent = `${(d.stats && d.stats.audience) || 0} pesanan audiens`;
+
+  if (!S.primed) {
+    applyStock(true);
+    reconcileTube(true);
+    S.primed = true;
+  } else if (!anim.busy && !anim.q.length) {
+    applyStock();
+    reconcileTube();
+  }
+}
+
+/* ---------- antrean animasi ---------- */
+const anim = { q: [], busy: false };
+function enqueue(fn) { anim.q.push(fn); if (!anim.busy) runAnim(); }
+async function runAnim() {
+  anim.busy = true;
+  while (anim.q.length) {
+    const fn = anim.q.shift();
+    try { await fn(); } catch (e) { console.warn('[Shambat Live]', e); }
+  }
+  anim.busy = false;
+  applyStock();
+  reconcileTube();
+}
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const fast = () => !S.theater || document.hidden || S.view === 'table';
+const pace = () => (anim.q.length > 8 ? 0.35 : anim.q.length > 3 ? 0.65 : 1) * (reduceMotion ? 0.6 : 1);
+const pause = ms => (fast() ? Promise.resolve() : new Promise(r => setTimeout(r, ms * pace())));
+
+function fly(wire, color, dur = 720, reverse = false) {
+  const p = wires[wire];
+  if (!p || fast()) return Promise.resolve();
+  const len = p.getTotalLength(), N = 28, frames = [];
+  for (let i = 0; i <= N; i++) {
+    const t = reverse ? 1 - i / N : i / N;
+    const pt = p.getPointAtLength(len * t);
+    frames.push({ transform: `translate(${pt.x}px,${pt.y}px) scale(${i === 0 ? 0.4 : i === N ? 1.7 : 1})`, opacity: i === 0 || i === N ? 0 : 1 });
+  }
+  const d = el('i', { class: 'sl-dot' });
+  d.style.setProperty('--c', color);
+  flow.appendChild(d);
+  const a = d.animate(frames, { duration: dur * pace(), easing: 'cubic-bezier(.45,0,.3,1)' });
+  return a.finished.then(() => d.remove(), () => d.remove());
+}
+
+const glowTimers = {};
+function glow(n, cls, ms = 1500) {
+  const node = nodes[n];
+  if (!node) return;
+  node.classList.remove('g', 'r', 'x');
+  void node.offsetWidth;
+  node.classList.add(cls);
+  clearTimeout(glowTimers[n]);
+  glowTimers[n] = setTimeout(() => node.classList.remove(cls), cls === 'x' ? 2600 : ms);
+}
+function orchSay(text) { $('small', nodes.orch).textContent = text; }
+function setOrch(mode) { nodes.orch.classList.toggle('comp', mode === 'comp'); }
+
+const C = { b: '#8fb0ff', g: '#4fd8a6', r: '#ff7b7b', y: '#ffcf6b', p: '#f5a8f5' };
+const EV = { OrderCreated: '#8fb0ff', PaymentCompleted: '#f5a8f5', StockReserved: '#ffcf6b', ShipmentScheduled: '#4fd8a6' };
+const SVC = { order: 'Pesanan', pay: 'Pembayaran', stock: 'Stok', ship: 'Pengiriman' };
+const short = code => String(code || '').slice(-6);
+
+async function consume(ev, code) {
+  tubeTake(ev, code);
+  orchSay(`${ev} diterima`);
+  await fly('c-tube', EV[ev] || C.b, 620);
+  glow('orch', 'g', 900);
+}
+async function write(svc, ev, code) {
+  await fly('w-' + svc, EV[ev] || C.b, 760);
+  tubeAdd(ev, code);
+}
+
+async function playAck(msg) {
+  await consume('OrderCreated', msg.order);
+  orchSay('pesanan tercatat, tunggu bayar');
+  await pause(500);
+}
+
+/* Satu baris saga_logs menjadi satu adegan di panggung. */
+async function play(log) {
+  const [cls, fn] = String(log.step || '').split('::');
+  const failed = log.status === 'FAILED';
+  const comp = log.action === 'COMPENSATING';
+  const d = log.details || {};
+  const code = log.order;
+  touch(code);
+  addLog(log);
+
+  if (cls === 'OrderService' && fn === 'createOrder') {
+    await fly('a-order', C.b);
+    glow('order', 'g'); track(code, 'created', 'ok');
+    await write('order', 'OrderCreated', code);
+  } else if (cls === 'PaymentService' && fn === 'markAsPaid') {
+    await fly('a-pay', C.p);
+    glow('pay', 'g'); track(code, 'paid', 'ok');
+    await write('pay', 'PaymentCompleted', code);
+  } else if (cls === 'InventoryService' && fn === 'reserveStockForOrder') {
+    await consume('PaymentCompleted', code);
+    orchSay('perintah: reservasi stok');
+    await fly('o-stock', failed ? C.r : C.b);
+    if (failed) { glow('stock', 'x'); track(code, 'reserved', 'ko', 'Stok gagal'); S.failShown.add(code + ':Inventory'); }
+    else { glow('stock', 'g'); track(code, 'reserved', 'ok'); applyStock(); await write('stock', 'StockReserved', code); }
+  } else if (cls === 'ShippingService' && fn === 'scheduleShipment') {
+    await consume('StockReserved', code);
+    orchSay('perintah: jadwalkan kirim');
+    await fly('o-ship', failed ? C.r : C.b);
+    if (failed) { glow('ship', 'x'); track(code, 'shipped', 'ko', 'Kirim gagal'); S.failShown.add(code + ':Shipping'); }
+    else { glow('ship', 'g'); track(code, 'shipped', 'ok'); await write('ship', 'ShipmentScheduled', code); }
+  } else if (cls === 'OrderService' && fn === 'completeOrder') {
+    await consume('ShipmentScheduled', code);
+    orchSay('saga selesai');
+    await fly('o-order', C.g);
+    glow('order', 'g'); track(code, 'done', 'ok', 'Selesai');
+    refreshWebFor(code);
+  } else if (cls === 'CheckoutSagaOrchestrator') {
+    const at = d.failed_at_step === 'Shipping' ? 'Shipping' : 'Inventory';
+    const svc = at === 'Shipping' ? 'ship' : 'stock';
+    if (!S.failShown.has(code + ':' + at)) {
+      await consume(at === 'Shipping' ? 'StockReserved' : 'PaymentCompleted', code);
+      orchSay(at === 'Shipping' ? 'perintah: jadwalkan kirim' : 'perintah: reservasi stok');
+      await fly('o-' + svc, C.r);
+      glow(svc, 'x');
+      track(code, at === 'Shipping' ? 'shipped' : 'reserved', 'ko', at === 'Shipping' ? 'Kirim gagal' : 'Stok gagal');
+    }
+    setOrch('comp');
+    orchSay('mengompensasi mundur');
+    await pause(700);
+  } else if (comp) {
+    const map = { releaseStock: ['stock', 'reserved', 'Stok dilepas'], refundPayment: ['pay', 'paid', 'Dana dikembalikan'], cancelShipment: ['ship', 'shipped', 'Kirim dibatalkan'], cancelOrder: ['order', 'done', 'Dibatalkan'] };
+    const m = map[fn] || [cls === 'InventoryService' ? 'stock' : cls === 'PaymentService' ? 'pay' : cls === 'ShippingService' ? 'ship' : 'order', null, null];
+    orchSay('kompensasi: ' + (SVC[m[0]] || '').toLowerCase());
+    await fly('o-' + m[0], C.r);
+    glow(m[0], 'r');
+    if (fn === 'releaseStock') applyStock();
+    if (fn === 'cancelOrder') { track(code, 'done', 'ko', 'Dibatalkan'); setOrch(''); orchSay('pesanan dibatalkan'); refreshWebFor(code); }
+    else if (m[1]) track(code, m[1], 'undo', m[2]);
+  } else {
+    glow('orch', failed ? 'r' : 'g');
+  }
+  await pause(380);
+}
+
+/* ---------- jejak saga ---------- */
+function addLog(log) {
+  const box = $('.sl-log', theater);
+  const empty = $('.empty', box);
+  if (empty) empty.remove();
+  const d = log.details || {};
+  let msg = d.message || d.error || d.reason || log.step;
+  if (String(log.step).startsWith('CheckoutSagaOrchestrator')) msg = `Gagal di tahap ${d.failed_at_step || '?'}: ${d.reason || 'memulai kompensasi'}`;
+  const bad = log.action === 'COMPENSATING' || log.status === 'FAILED';
+  const o = S.orders.get(log.order);
+  const li = el('div', { class: 'sl-li' + (bad ? ' r' : '') }, `<time>${esc(log.at || '')}</time><i></i><div><p>${esc(msg)}</p><b>${esc(log.order)}${o ? ' · ' + esc(o.customer) : ''}</b></div>`);
+  box.prepend(li);
+  while (box.children.length > 5) box.lastChild.remove();
+}
+
+/* ---------- jalur status pesanan ---------- */
+const STEPS = ['created', 'paid', 'reserved', 'shipped', 'done'];
+const STEP_LABEL = { created: 'Dibuat', paid: 'Dibayar', reserved: 'Stok direservasi', shipped: 'Kirim dijadwalkan', done: 'Selesai' };
+let seenCounter = 0;
+function touch(code) {
+  let t = S.tracks.get(code);
+  if (!t) { t = { code, chips: {}, first: ++seenCounter, active: 0 }; S.tracks.set(code, t); }
+  t.active = ++seenCounter;
+  if (!S.focus.includes(code)) {
+    S.focus.push(code);
+    if (S.focus.length > 2) {
+      const drop = S.focus.filter(c => c !== code).sort((a, b) => S.tracks.get(a).active - S.tracks.get(b).active)[0];
+      S.focus = S.focus.filter(c => c !== drop);
+    }
+    renderTracks();
+  }
+}
+function track(code, step, state, label) {
+  const t = S.tracks.get(code);
+  if (!t) return;
+  t.chips[step] = { state, label: label || STEP_LABEL[step] };
+  renderTracks();
+}
+function renderTracks() {
+  const box = $('.sl-tracks', theater);
+  if (!S.focus.length) { box.innerHTML = '<div class="empty">Status pesanan akan bergerak di sini, persis seperti yang dilihat pembeli.</div>'; return; }
+  const rows = S.focus.map(c => S.tracks.get(c)).filter(Boolean).sort((a, b) => a.first - b.first);
+  box.innerHTML = rows.map(t => {
+    const o = S.orders.get(t.code);
+    const who = o ? o.customer : 'Pesanan';
+    return `<div class="sl-trk"><div class="who">${esc(who)}<small>${esc(t.code)}</small></div>` +
+      STEPS.map(s => { const c = t.chips[s]; return `<div class="sl-st ${c ? c.state : ''}">${esc(c ? c.label : STEP_LABEL[s])}</div>`; }).join('') + '</div>';
+  }).join('');
+}
+
+/* ---------- tabung outbox ---------- */
+function chipEl(ev, code, id, animate) {
+  const c = el('div', { class: 'sl-chip' + (animate ? ' enter' : '') }, `${esc(ev)}<small>${id ? '#' + id + ' · ' : ''}${esc(code)}</small>`);
+  c.style.setProperty('--ec', EV[ev] || C.b);
+  c.dataset.ev = ev; c.dataset.code = code; if (id) c.dataset.id = id;
+  return c;
+}
+function tubeAdd(ev, code) {
+  const box = $('.sl-chips', theater);
+  $$('.more,.empty', box).forEach(e => e.remove());
+  box.appendChild(chipEl(ev, code, null, !fast()));
+  renderTubeCount();
+}
+function tubeTake(ev, code) {
+  const chip = $$('.sl-chip:not(.leave)', theater).find(c => c.dataset.ev === ev && c.dataset.code === code);
+  if (!chip) return;
+  if (fast()) { chip.remove(); return; }
+  chip.classList.add('leave');
+  setTimeout(() => chip.remove(), 380);
+  renderTubeCount();
+}
+function reconcileTube(initial) {
+  if (!S.feed) return;
+  const box = $('.sl-chips', theater);
+  const snap = (S.feed.queue || []).slice(0, 8);
+  const existing = $$('.sl-chip:not(.leave)', box);
+  const used = new Set();
+  const next = snap.map(m => {
+    let c = existing.find(x => !used.has(x) && (x.dataset.id ? x.dataset.id === String(m.id) : (x.dataset.ev === m.event && x.dataset.code === m.order)));
+    if (c) { used.add(c); if (!c.dataset.id) { c.dataset.id = m.id; $('small', c).textContent = `#${m.id} · ${m.order}`; } return c; }
+    return chipEl(m.event, m.order, m.id, !initial && !fast());
+  });
+  existing.forEach(c => { if (!used.has(c)) c.remove(); });
+  $$('.more,.empty', box).forEach(e => e.remove());
+  next.forEach(c => box.appendChild(c));
+  const extra = (S.feed.queue_total || 0) - snap.length;
+  if (extra > 0) box.appendChild(el('div', { class: 'more' }, `+${extra} event lain menunggu`));
+  if (!snap.length) box.appendChild(el('div', { class: 'empty' }, 'Semua event sudah dikirim relay.'));
+  renderTubeCount();
+}
+
+function clockSec(t) { const m = /^(\d\d):(\d\d):(\d\d)$/.exec(t || ''); return m ? (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) : null; }
+function oldestAge() {
+  const f = S.feed;
+  if (!f || !f.queue || !f.queue.length) return null;
+  const a = clockSec(f.queue[0].created), b = clockSec(f.server_time);
+  if (a === null || b === null) return null;
+  return (b - a + 86400) % 86400;
+}
+const fmtAge = sec => Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+function renderTubeCount() {
+  const qn = $('.sl-qn', theater);
+  const narrating = anim.busy || anim.q.length;
+  const n = narrating ? $$('.sl-chip:not(.leave)', theater).length : S.queueTotal;
+  const age = narrating ? null : oldestAge();
+  qn.textContent = n ? `${n} menunggu` : 'kosong';
+  qn.classList.toggle('zero', !n);
+  const ag = $('.sl-age', theater);
+  ag.hidden = !(n && age !== null && age >= 5);
+  ag.textContent = ag.hidden ? '' : `Event tertua sudah menunggu ${fmtAge(age)}`;
+  ag.classList.toggle('late', age !== null && age > 300);
+}
+// Slide 26 punya penghitung backlog palsu; saat live, tampilkan angka asli dari Shambat.
+const s26 = slides.find(sl => sl.dataset.key === 's26');
+const backlogEl = s26 ? el('div', { class: 'ab mono sl-backlog', style: 'left:99px;top:722px;font-size:15px' }) : null;
+if (backlogEl) s26.appendChild(backlogEl);
+function renderBacklog() {
+  if (!backlogEl) return;
+  const age = oldestAge();
+  const late = age !== null && age > 300;
+  backlogEl.innerHTML = `Shambat sekarang · outbox_messages status = PENDING: <b>${S.queueTotal}</b>` +
+    (age !== null ? ` · event tertua ${fmtAge(age)}` : '') + (late ? '  ALARM: lebih dari 5 menit' : '');
+  backlogEl.classList.toggle('late', late);
+}
+
+/* ---------- stok ---------- */
+function applyStock(initial) {
+  const list = (S.feed && S.feed.products) || [];
+  const box = $('.sl-srs', theater);
+  if (box.children.length !== list.length) box.innerHTML = '';
+  list.forEach((p, i) => {
+    S.maxStock[p.id] = Math.max(S.maxStock[p.id] || 0, p.stock, 1);
+    let row = box.children[i];
+    if (!row || row.dataset.id !== String(p.id)) {
+      row = el('div', { class: 'sl-sr' }, `<span></span><div class="sl-bar"><i></i></div><em></em>`);
+      row.dataset.id = p.id;
+      if (box.children[i]) box.replaceChild(row, box.children[i]); else box.appendChild(row);
+    }
+    $('span', row).textContent = p.name;
+    $('span', row).title = p.name;
+    $('em', row).textContent = p.stock;
+    $('i', row).style.width = (p.stock / S.maxStock[p.id] * 100) + '%';
+    row.classList.toggle('zero', p.stock === 0);
+    const prev = S.shownStock[p.id];
+    if (!initial && prev !== undefined && prev !== p.stock) {
+      const diff = p.stock - prev;
+      const badge = el('b', { class: 'sl-delta ' + (diff < 0 ? 'dn' : 'up') }, (diff > 0 ? '+' : '−') + Math.abs(diff));
+      row.appendChild(badge);
+      setTimeout(() => badge.remove(), 1900);
+    }
+    S.shownStock[p.id] = p.stock;
+  });
+}
+
+/* ---------- tabel outbox ---------- */
+let tableSeen = new Map();
+function renderTable(rows) {
+  const body = $('.sl-tb-body', theater);
+  body.innerHTML = rows.length ? rows.map(r => {
+    const was = tableSeen.get(r.id);
+    const fl = S.primed && was !== r.status ? ' fl' : '';
+    const st = String(r.status || '').toLowerCase();
+    return `<div class="sl-tr${fl}"><span>${r.id}</span><span>${esc(r.order)}</span><span>${esc(r.event)}</span><span class="${esc(st)}">${esc(r.status)}</span><span>${esc(r.created || '')}</span><span class="${r.processed ? '' : 'null'}">${esc(r.processed || 'NULL')}</span></div>`;
+  }).join('') : '<div class="sl-tbl-note">Tabel outbox masih kosong. Jalankan skenario untuk mengisinya.</div>';
+  tableSeen = new Map(rows.map(r => [r.id, r.status]));
+}
+
+/* ---------- audiens ---------- */
+function audienceUrl() { return (S.info && S.info.audience_url) || cfg.base; }
+let qrFor = null, qrLib = null;
+function loadQrLib() {
+  if (qrLib) return qrLib;
+  qrLib = new Promise((resolve, reject) => {
+    if (window.QRCode) return resolve(window.QRCode);
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    s.onload = () => (window.QRCode ? resolve(window.QRCode) : reject(new Error('QR')));
+    s.onerror = () => reject(new Error('QR'));
+    document.head.appendChild(s);
+  });
+  qrLib.catch(() => { qrLib = null; });
+  return qrLib;
+}
+function renderQr() {
+  const url = audienceUrl();
+  $('.sl-qr-url', aud).textContent = url.replace(/^https?:\/\//, '');
+  if (qrFor === url) return;
+  const box = $('.sl-qr-box', aud);
+  loadQrLib().then(QR => {
+    box.innerHTML = '';
+    new QR(box, { text: url, width: 316, height: 316, colorDark: '#0b0f26', colorLight: '#ffffff', correctLevel: QR.CorrectLevel.M });
+    qrFor = url;
+  }).catch(() => {
+    box.innerHTML = `Kode QR butuh internet untuk dimuat.<br>Minta audiens mengetik alamat di bawah ini.`;
+  });
+}
+function renderAud(d) {
+  const list = (d.orders || []).filter(o => !o.presenter).slice(0, 6);
+  $('.sl-aud-n b', aud).textContent = (d.stats && d.stats.audience) || 0;
+  const box = $('.sl-aud-list', aud);
+  const key = list.map(o => o.code + o.status).join('|');
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.innerHTML = list.length ? list.map(o => {
+    const st = o.status === 'COMPLETED' ? ['ok', 'Selesai'] : o.status === 'CANCELED' ? ['ko', 'Dibatalkan'] : ['', 'Diproses'];
+    return `<div class="sl-ar"><b>${esc(o.customer)}</b><span>${esc(o.product)}</span><em class="${st[0]}">${st[1]}</em></div>`;
+  }).join('') : '<div class="empty">Belum ada pesanan. Jadilah yang pertama.</div>';
+}
+
+/* ---------- membuka / menutup tampilan ---------- */
+function setView(v) {
+  S.view = v === 'table' ? 'table' : 'flow';
+  theater.classList.toggle('sl-tblview', S.view === 'table');
+  $('.sl-view-lbl', theater).textContent = S.view === 'table' ? 'Alur saga' : 'Tabel outbox';
+}
+function openTheater(view) {
+  if (!S.on) return;
+  if (view) setView(view);
+  closeAud();
+  S.theater = true;
+  theater.classList.add('open');
+  theater.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('sl-layer-open');
+  applyStock(); reconcileTube(true);
+}
+function toggleMini() {
+  if (!S.theater) {
+    openTheater();
+    setMini(true);
+    return;
+  }
+  setMini(!S.mini);
+}
+function setMini(mini, silent = false) {
+  S.mini = !!mini;
+  theater.classList.toggle('mini', S.mini);
+  const lbl = $('.sl-mini-lbl', theater);
+  if (lbl) lbl.textContent = S.mini ? 'Perbesar' : 'Kecilkan';
+  const dockBtn = $('[data-act="mini"]', dock);
+  if (dockBtn) {
+    dockBtn.classList.toggle('on', S.mini);
+    dockBtn.innerHTML = (S.mini ? 'Perbesar' : 'Kecilkan') + ' <kbd>_</kbd>';
+  }
+  if (!silent) toast(S.mini ? 'Panggung saga dikecilkan ke pojok slide.' : 'Panggung saga diperbesar penuh.', 'info', 1800);
+}
+function closeTheater() {
+  S.theater = false;
+  theater.classList.remove('open');
+  setMini(false, true);
+  theater.setAttribute('aria-hidden', 'true');
+  syncLayerClass();
+}
+function syncLayerClass() { document.body.classList.toggle('sl-layer-open', S.theater || S.aud); }
+function openAud() {
+  if (!ready()) return;
+  closeTheater();
+  S.aud = true;
+  aud.classList.add('open');
+  aud.setAttribute('aria-hidden', 'false');
+  syncLayerClass();
+  renderQr();
+  if (S.feed) renderAud(S.feed);
+}
+function closeAud() { S.aud = false; aud.classList.remove('open'); aud.setAttribute('aria-hidden', 'true'); syncLayerClass(); }
+
+const WEB_FRAC = 0.46;
+function webUrl(tab) {
+  const base = cfg.base.replace(/\/+$/, '');
+  if (tab === 'admin') return base + '/admin';
+  if (tab === 'status') {
+    const code = S.focus.length ? S.focus.map(c => S.tracks.get(c)).sort((a, b) => b.active - a.active)[0].code : (S.feed && S.feed.orders && S.feed.orders[0] && S.feed.orders[0].code);
+    if (code) return base + '/checkout/status/' + encodeURIComponent(code);
+  }
+  return base + '/';
+}
+function loadWeb(tab) {
+  S.webTab = tab;
+  const url = webUrl(tab);
+  iframe.src = url;
+  $('.sl-url', web).textContent = url;
+  $('.sl-web-open', web).href = url;
+  $$('[data-web]', web).forEach(b => b.classList.toggle('on', b.dataset.web === tab));
+}
+function openWeb(tab) {
+  if (!ready()) return;
+  S.web = true;
+  web.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('sl-split');
+  loadWeb(tab || S.webTab);
+  layoutSplit();
+}
+function closeWeb() {
+  if (!S.web) return;
+  S.web = false;
+  web.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('sl-split');
+  stage.style.left = '';
+  dispatchEvent(new Event('resize'));
+  setTimeout(() => { if (!S.web) iframe.removeAttribute('src'); }, 600);
+}
+function layoutSplit() {
+  if (!S.web) return;
+  const avail = innerWidth * (1 - WEB_FRAC);
+  const s = Math.min(avail / W, innerHeight / H) * 0.97;
+  stage.style.left = (avail / 2) + 'px';
+  stage.style.transform = `translate(-50%,-50%) scale(${s})`;
+}
+addEventListener('resize', layoutSplit);
+let webRefreshT = null;
+function refreshWebFor(code) {
+  if (!S.web || S.webTab === 'shop') return;
+  if (S.webTab === 'status' && !iframe.src.includes(encodeURIComponent(code))) return;
+  clearTimeout(webRefreshT);
+  webRefreshT = setTimeout(() => loadWeb(S.webTab), 900);
+}
+
+/* ---------- koneksi manual ---------- */
+function showConn(show) {
+  connForm.hidden = !show;
+  $('[data-act="conn"]', dock).setAttribute('aria-expanded', String(show));
+  if (show) {
+    connForm.base.value = cfg.base;
+    connForm.key.value = cfg.key;
+    connForm.base.disabled = servedByApp;
+    dock.classList.add('pinned');
+    setTimeout(() => (cfg.key ? connForm.base : connForm.key).focus(), 50);
+  }
+}
+connForm.addEventListener('submit', e => {
+  e.preventDefault();
+  if (!servedByApp) cfg.base = (connForm.base.value.trim() || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+  cfg.key = connForm.key.value.trim().toUpperCase();
+  store.set('base', cfg.base);
+  store.set('key', cfg.key);
+  showConn(false);
+  if (!S.on) setLive(true); else { S.info = null; connect(); }
+});
+// ketikan di dalam formulir tidak boleh menggeser slide
+dock.addEventListener('keydown', e => { if (e.target.matches('input')) e.stopPropagation(); });
+
+/* ---------- klik ---------- */
+function onAct(act) {
+  switch (act) {
+    case 'conn': showConn(connForm.hidden); break;
+    case 'minimize-dock':
+    case 'pin': {
+      const p = dock.classList.toggle('open');
+      dock.classList.toggle('pinned', p);
+      break;
+    }
+    case 'step': doStep(true); break;
+    case 'flush': revive(); break;
+    case 'theater': S.theater ? closeTheater() : openTheater(); break;
+    case 'mini': toggleMini(); break;
+    case 'web': S.web ? closeWeb() : openWeb(); break;
+    case 'aud': S.aud ? closeAud() : openAud(); break;
+    case 'hook': runHook(); break;
+    case 'reset': resetDemo(); break;
+    case 'off': setLive(false); break;
+    case 'view': setView(S.view === 'table' ? 'flow' : 'table'); break;
+    case 'close-web': closeWeb(); break;
+  }
+}
+dock.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b || b.type === 'submit') return;
+  if (b.dataset.mode) setMode(b.dataset.mode);
+  else if (b.dataset.sc) scenario(b.dataset.sc);
+  else if (b.dataset.act) onAct(b.dataset.act);
+  if (e.detail > 0) b.blur(); // klik mouse: kembalikan keyboard ke navigasi slide
+});
+theater.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (!b) {
+    if (S.mini) setMini(false);
+    return;
+  }
+  if (b.dataset.act === 'close') closeTheater(); else onAct(b.dataset.act);
+  if (e.detail > 0) b.blur();
+});
+aud.addEventListener('click', e => { if (e.target.closest('[data-act="close"]')) closeAud(); });
+web.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.web) loadWeb(b.dataset.web); else if (b.dataset.act) onAct(b.dataset.act);
+  if (e.detail > 0) b.blur();
+});
+cue.addEventListener('click', e => {
+  const o = dock.classList.toggle('open');
+  dock.classList.toggle('pinned', o);
+  if (e.detail > 0) cue.blur();
+});
+
+/* ---------- pintasan keyboard ---------- */
+addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target && e.target.closest && e.target.closest('input,textarea,select,[contenteditable="true"]')) return;
+  const ov = $('#ov');
+  if (ov && ov.classList.contains('open')) return;
+  const k = e.key;
+  if (k === 'l' || k === 'L') { setLive(!S.on); return; }
+  if (!S.on) return;
+  switch (k) {
+    case 'Escape':
+      if (S.aud) closeAud(); else if (S.theater) closeTheater(); else if (S.web) closeWeb(); else if (!connForm.hidden) showConn(false); else dock.classList.remove('open', 'pinned');
+      break;
+    case '1': case '2': case '3': case '4': scenario(Object.keys(SCENARIOS)[+k - 1]); break;
+    case 't': case 'T': S.theater ? closeTheater() : openTheater(); break;
+    case '_': case '-': toggleMini(); break;
+    case 'y': case 'Y': if (!S.theater) openTheater('table'); else setView(S.view === 'table' ? 'flow' : 'table'); break;
+    case 'q': case 'Q': S.aud ? closeAud() : openAud(); break;
+    case 'w': case 'W': S.web ? closeWeb() : openWeb(); break;
+    case 'g': case 'G': runHook(); break;
+    case 'n': doStep(true); break;
+    case 'N': if (e.shiftKey) revive(); else doStep(true); break;
+    case 'm': case 'M': setMode(MODES[(MODES.indexOf(S.mode) + 1) % MODES.length]); toast('Mode relay: ' + S.mode, 'info', 1800); break;
+    case 'd': case 'D': onAct('pin'); break;
+    case 'R': if (e.shiftKey) resetDemo(); break;
+    default: return;
+  }
+});
+
+/* ---------- mulai ---------- */
+renderStatus();
+updateHook();
+renderTracks();
+if (keyFromUrl || store.get('on', false)) setLive(true);
+})();
+
+</script>
+<!-- ===================== AKHIR SHAMBAT LIVE ===================== -->
+</body>
+</html>
